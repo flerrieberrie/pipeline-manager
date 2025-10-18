@@ -1,10 +1,10 @@
-# Florian Dheer Pipeline Manager
+# Pipeline-Manager
 
 A professional pipeline management system for creative and business workflows, featuring a modern GUI interface and automated folder structure creation.
 
 ## Overview
 
-The Florian Dheer Pipeline Manager is a comprehensive toolkit designed to streamline various creative and business processes. It provides an intuitive interface for managing projects across multiple domains including audio production, visual design, web development, photography, and business operations.
+The Pipeline-Manager is a comprehensive toolkit designed to streamline various creative and business processes. It provides an intuitive interface for managing projects across multiple domains including audio production, visual design, web development, photography, and business operations.
 
 ### Key Features
 
