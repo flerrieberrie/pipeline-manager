@@ -1,0 +1,6 @@
+# Core dependencies
+pillow>=10.0.0
+pyexiv2>=2.8.0
+
+# Optional: Enhanced tkinter styling
+ttkbootstrap>=1.10.1
