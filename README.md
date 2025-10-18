@@ -211,20 +211,26 @@ CREATIVE_CATEGORIES = {
 
 ## Version History
 
-### Version 2.1.0 (Current)
+### Version 0.5.0 (Current)
+- Professional project structure with comprehensive documentation
+- Added README, LICENSE, CHANGELOG, and .gitignore
+- Fixed requirements.txt (added pyexiv2, removed unused dependencies)
+- Organized assets into dedicated folder
+- Created docs/, config/, and tests/ directories
 - Professional dark-themed UI
-- Enhanced error handling
-- Improved logging system
+- Enhanced error handling and logging
 - Modular script organization
 
-### Version 2.0.0
-- Complete UI redesign
-- Category-based organization
+### Version 0.4.0
+- Professional dark-themed UI
+- Category-based script organization
 - Multi-threaded script execution
+- Enhanced error handling
 
-### Version 1.x
-- Initial release
+### Version 0.3.0
+- Initial pipeline manager with GUI
 - Basic script launcher functionality
+- Core pipeline scripts for various workflows
 
 ## Contributing
 
