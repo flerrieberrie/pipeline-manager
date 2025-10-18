@@ -61,7 +61,6 @@
    ```bash
    pip install pillow>=10.0.0
    pip install pyexiv2>=2.8.0
-   pip install ttkbootstrap>=1.10.1
    ```
 
 ### Method 3: Virtual Environment (Advanced)
@@ -145,7 +144,7 @@ After installation, verify everything is working:
 
 2. **Check installed packages**
    ```bash
-   pip list | grep -E "(pillow|pyexiv2|ttkbootstrap)"
+   pip list | grep -E "(pillow|pyexiv2)"
    ```
 
 3. **Verify Python version**

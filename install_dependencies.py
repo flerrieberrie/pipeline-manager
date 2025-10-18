@@ -23,19 +23,11 @@ CORE_PACKAGES = [
 ]
 
 # Desktop-specific dependencies (tkinter app)
-DESKTOP_PACKAGES = [
-    {"name": "ttkbootstrap", "pip_name": "ttkbootstrap>=1.10.1", "description": "Enhanced tkinter styling (optional)", "optional": True}
-]
+# Note: tkinter is included with Python by default
+DESKTOP_PACKAGES = []
 
-# Web-specific dependencies (FastAPI app)
-WEB_PACKAGES = [
-    {"name": "fastapi", "pip_name": "fastapi>=0.104.1", "description": "Web framework for the pipeline server"},
-    {"name": "uvicorn", "pip_name": "uvicorn[standard]>=0.24.0", "description": "ASGI server for running the web interface"},
-    {"name": "websockets", "pip_name": "websockets>=12.0", "description": "Real-time communication for progress updates"},
-    {"name": "python-multipart", "pip_name": "python-multipart>=0.0.6", "description": "File upload support"},
-    {"name": "aiofiles", "pip_name": "aiofiles>=23.2.1", "description": "Async file operations"},
-    {"name": "watchdog", "pip_name": "watchdog>=3.0.0", "description": "File system monitoring for real-time updates", "optional": True}
-]
+# Web-specific dependencies (not currently used)
+WEB_PACKAGES = []
 
 def is_package_installed(package_name):
     """Check if a Python package is installed"""

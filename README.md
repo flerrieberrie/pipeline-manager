@@ -28,7 +28,7 @@ The Florian Dheer Pipeline Manager is a comprehensive toolkit designed to stream
 ### Python Dependencies
 - `pillow>=10.0.0` - Image processing and logo display
 - `pyexiv2>=2.8.0` - EXIF metadata handling for images
-- `ttkbootstrap>=1.10.1` - Enhanced tkinter styling (optional)
+- `tkinter` - GUI framework (included with Python)
 
 ## Installation
 
@@ -207,7 +207,7 @@ CREATIVE_CATEGORIES = {
 
 **Issue: GUI appears blank or crashes**
 - Solution: Ensure tkinter is installed (included with most Python installations)
-- Try installing ttkbootstrap: `pip install ttkbootstrap`
+- On Linux: `sudo apt-get install python3-tk`
 
 ## Version History
 
