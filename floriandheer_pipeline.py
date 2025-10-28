@@ -210,6 +210,12 @@ CREATIVE_CATEGORIES = {
                         "path": os.path.join(SCRIPTS_DIR, "PipelineScript_Physical3DPrinting_FolderStructure.py"),
                         "description": "Create standardized folder structure for 3D printing projects based on template",
                         "icon": "📁"
+                    },
+                    "woocommerce_bpost": {
+                        "name": "WooCommerce bpost Monitor",
+                        "path": os.path.join(SCRIPTS_DIR, "PipelineScript_Physical_WooCommerceBpostMonitor.py"),
+                        "description": "Automatically monitor WooCommerce orders and download bpost shipping labels",
+                        "icon": "📦"
                     }
                 }
             }
@@ -396,11 +402,31 @@ class ScriptRunner:
                         if callback:
                             callback(line.strip(), "info")
                 
+                # Filter out Python warnings from stderr
+                warning_indicators = ['Warning:', 'SyntaxWarning', 'DeprecationWarning', 'FutureWarning', 'UserWarning']
+                warning_context_lines = 0  # Track lines after a warning (usually code context)
+                
                 for line in iter(process.stderr.readline, ''):
                     if line.strip():
-                        logger.error(line.strip())
+                        stripped_line = line.strip()
+                        
+                        # Check if this line contains a Python warning
+                        is_warning_line = any(indicator in stripped_line for indicator in warning_indicators)
+                        
+                        if is_warning_line:
+                            # This is a warning - skip it and the next 2 lines (usually file path + code)
+                            warning_context_lines = 2
+                            continue
+                        
+                        if warning_context_lines > 0:
+                            # Skip context lines after a warning
+                            warning_context_lines -= 1
+                            continue
+                        
+                        # This is a real error - show it
+                        logger.error(stripped_line)
                         if callback:
-                            callback(line.strip(), "error")
+                            callback(stripped_line, "error")
                 
                 exit_code = process.wait()
                 
@@ -431,7 +457,7 @@ class ScriptRunner:
 
 
 class ScrollableFrame(tk.Frame):
-    """A scrollable frame widget without mouse wheel scrolling."""
+    """A scrollable frame widget with smooth mouse wheel scrolling."""
     
     def __init__(self, parent, bg=None):
         super().__init__(parent, bg=bg)
@@ -452,7 +478,8 @@ class ScrollableFrame(tk.Frame):
         # Bind canvas resize to frame width
         self.canvas.bind('<Configure>', self._configure_canvas_window)
         
-        # Mouse wheel scrolling removed - no bind_mouse_wheel() call
+        # Bind mouse wheel directly to canvas (simpler approach)
+        self._bind_mouse_wheel()
         
         # Pack widgets
         self.canvas.pack(side="left", fill="both", expand=True)
@@ -463,7 +490,60 @@ class ScrollableFrame(tk.Frame):
         canvas_width = event.width
         self.canvas.itemconfig(self.canvas_window, width=canvas_width)
     
-    # Mouse wheel methods removed completely
+    def _bind_mouse_wheel(self):
+        """Bind mouse wheel events directly to canvas."""
+        # Windows and MacOS - bind directly to canvas
+        self.canvas.bind("<MouseWheel>", self._on_mouse_wheel)
+        # Linux
+        self.canvas.bind("<Button-4>", self._on_mouse_wheel)
+        self.canvas.bind("<Button-5>", self._on_mouse_wheel)
+        
+        # Also bind to all children recursively
+        self._bind_to_mousewheel(self.scrollable_frame)
+    
+    def _bind_to_mousewheel(self, widget):
+        """Recursively bind mousewheel to widget and all its children."""
+        # Bind to the widget
+        widget.bind("<MouseWheel>", self._on_mouse_wheel, add="+")
+        widget.bind("<Button-4>", self._on_mouse_wheel, add="+")
+        widget.bind("<Button-5>", self._on_mouse_wheel, add="+")
+        
+        # Bind to all children
+        for child in widget.winfo_children():
+            self._bind_to_mousewheel(child)
+    
+    def rebind_mousewheel(self):
+        """Rebind mousewheel to all widgets after content has been added."""
+        # Rebind to the scrollable frame and all its children
+        self._bind_to_mousewheel(self.scrollable_frame)
+    
+    def _on_mouse_wheel(self, event):
+        """Handle mouse wheel scrolling."""
+        # Check if there's actually content to scroll
+        try:
+            bbox = self.canvas.bbox("all")
+            if bbox is None:
+                return "break"
+            
+            # Get the current view
+            view_height = self.canvas.winfo_height()
+            content_height = bbox[3] - bbox[1]
+            
+            # Only scroll if content is larger than view
+            if content_height <= view_height:
+                return "break"
+            
+            # Determine scroll direction and amount
+            if event.num == 4 or event.delta > 0:
+                # Scroll up
+                self.canvas.yview_scroll(-1, "units")
+            elif event.num == 5 or event.delta < 0:
+                # Scroll down
+                self.canvas.yview_scroll(1, "units")
+            
+            return "break"  # Prevent event from propagating
+        except:
+            return "break"
     
     def get_frame(self):
         """Get the scrollable frame."""
@@ -728,6 +808,9 @@ class ProfessionalPipelineGUI:
             
             # Configure grid weights for proper expansion
             content_frame.grid_columnconfigure(col, weight=1)
+        
+        # IMPORTANT: Rebind mousewheel after all widgets are added
+        scroll_frame.rebind_mousewheel()
     
     def open_folder(self, folder_path):
         """Open a folder in Windows File Explorer."""

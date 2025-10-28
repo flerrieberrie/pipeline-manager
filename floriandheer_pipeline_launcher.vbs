@@ -1,8 +1,6 @@
 ' InvisibleLauncher.vbs - Launches Python script invisibly
-' Get the directory where this .vbs file is located
-strScriptDir = CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName)
-' Define path to your Python script (relative to this .vbs file)
-strPythonScript = strScriptDir & "\floriandheer_pipeline.py"
+' Define path to your Python script
+strPythonScript = "P:\_Script\floriandheer\floriandheer_pipeline.py"
 
 ' Create a shell object
 Set objShell = CreateObject("WScript.Shell")

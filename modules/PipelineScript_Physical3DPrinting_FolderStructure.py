@@ -104,25 +104,35 @@ class FolderStructureCreator:
         self.blender_entry = ttk.Entry(production_frame, textvariable=self.blender_var, width=15)
         self.blender_entry.grid(row=1, column=2, sticky="w", padx=5, pady=5)
         
+        # FreeCAD version with checkbox
+        self.use_freecad_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(production_frame, variable=self.use_freecad_var, 
+                       command=self.toggle_software_fields).grid(row=2, column=0, sticky="w", padx=5, pady=5)
+        
+        ttk.Label(production_frame, text="FreeCAD:").grid(row=2, column=1, sticky="w", padx=5, pady=5)
+        self.freecad_var = tk.StringVar(value="0.21")
+        self.freecad_entry = ttk.Entry(production_frame, textvariable=self.freecad_var, width=15)
+        self.freecad_entry.grid(row=2, column=2, sticky="w", padx=5, pady=5)
+        
         # Alibre version with checkbox
         self.use_alibre_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(production_frame, variable=self.use_alibre_var, 
-                       command=self.toggle_software_fields).grid(row=2, column=0, sticky="w", padx=5, pady=5)
+                       command=self.toggle_software_fields).grid(row=3, column=0, sticky="w", padx=5, pady=5)
         
-        ttk.Label(production_frame, text="Alibre:").grid(row=2, column=1, sticky="w", padx=5, pady=5)
+        ttk.Label(production_frame, text="Alibre:").grid(row=3, column=1, sticky="w", padx=5, pady=5)
         self.alibre_var = tk.StringVar(value="2024")
         self.alibre_entry = ttk.Entry(production_frame, textvariable=self.alibre_var, width=15)
-        self.alibre_entry.grid(row=2, column=2, sticky="w", padx=5, pady=5)
+        self.alibre_entry.grid(row=3, column=2, sticky="w", padx=5, pady=5)
         
         # Affinity version with checkbox
         self.use_affinity_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(production_frame, variable=self.use_affinity_var, 
-                       command=self.toggle_software_fields).grid(row=3, column=0, sticky="w", padx=5, pady=5)
+                       command=self.toggle_software_fields).grid(row=4, column=0, sticky="w", padx=5, pady=5)
         
-        ttk.Label(production_frame, text="Affinity:").grid(row=3, column=1, sticky="w", padx=5, pady=5)
+        ttk.Label(production_frame, text="Affinity:").grid(row=4, column=1, sticky="w", padx=5, pady=5)
         self.affinity_var = tk.StringVar(value="2.0")
         self.affinity_entry = ttk.Entry(production_frame, textvariable=self.affinity_var, width=15)
-        self.affinity_entry.grid(row=3, column=2, sticky="w", padx=5, pady=5)
+        self.affinity_entry.grid(row=4, column=2, sticky="w", padx=5, pady=5)
         
         # Hardware specifications
         hardware_frame = ttk.LabelFrame(form_frame, text="Hardware Specifications")
@@ -282,6 +292,12 @@ class FolderStructureCreator:
         else:
             self.blender_entry.configure(state="disabled")
             
+        # FreeCAD
+        if self.use_freecad_var.get():
+            self.freecad_entry.configure(state="normal")
+        else:
+            self.freecad_entry.configure(state="disabled")
+            
         # Alibre
         if self.use_alibre_var.get():
             self.alibre_entry.configure(state="normal")
@@ -362,6 +378,8 @@ class FolderStructureCreator:
             folders.append(f"{production_folder}/Houdini")
         if self.use_blender_var.get():
             folders.append(f"{production_folder}/Blender")
+        if self.use_freecad_var.get():
+            folders.append(f"{production_folder}/FreeCAD")
         if self.use_alibre_var.get():
             folders.append(f"{production_folder}/Alibre")
         if self.use_affinity_var.get():
@@ -398,6 +416,8 @@ class FolderStructureCreator:
             software_list.append(f"Houdini: {self.houdini_var.get()}")
         if self.use_blender_var.get():
             software_list.append(f"Blender: {self.blender_var.get()}")
+        if self.use_freecad_var.get():
+            software_list.append(f"FreeCAD: {self.freecad_var.get()}")
         if self.use_alibre_var.get():
             software_list.append(f"Alibre: {self.alibre_var.get()}")
         if self.use_affinity_var.get():
@@ -490,6 +510,8 @@ class FolderStructureCreator:
             software_specs['Houdini'] = self.houdini_var.get()
         if self.use_blender_var.get():
             software_specs['Blender'] = self.blender_var.get()
+        if self.use_freecad_var.get():
+            software_specs['FreeCAD'] = self.freecad_var.get()
         if self.use_alibre_var.get():
             software_specs['Alibre'] = self.alibre_var.get()
         if self.use_affinity_var.get():
@@ -581,6 +603,8 @@ class FolderStructureCreator:
             folders_to_create.append(f"{production_folder}/Houdini")
         if 'Blender' in software_specs:
             folders_to_create.append(f"{production_folder}/Blender")
+        if 'FreeCAD' in software_specs:
+            folders_to_create.append(f"{production_folder}/FreeCAD")
         if 'Alibre' in software_specs:
             folders_to_create.append(f"{production_folder}/Alibre")
         if 'Affinity' in software_specs:
@@ -664,7 +688,7 @@ NOTES
 """
             
             # Write to file
-            with open(spec_file_path, 'w') as file:
+            with open(spec_file_path, 'w', encoding='utf-8') as file:
                 file.write(content)
                 
             self.status_var.set(f"Created project structure and specifications file")

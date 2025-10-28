@@ -1240,23 +1240,7 @@ class PlaylistSyncUI:
                     dest_ext = ".flac" if convert_to_flac and file_ext != '.flac' else file_ext
                     dest_path = os.path.join(dj_library, base_name + dest_ext)
                     
-                    # Check if file already exists and we should skip it
-                    if os.path.exists(dest_path) and skip_existing:
-                        # File exists and we want to skip - use the existing file
-                        file_mapping[track_path] = dest_path
-                        synced_tracks.append(dest_path)
-                        skipped_count += 1
-                        
-                        if i % 20 == 0 or i+1 == total_tracks:
-                            progress_pct = (i + 1) * 100 / total_tracks
-                            self.status_var.set(f"Processing track {i+1}/{total_tracks} ({progress_pct:.1f}%)")
-                            self.append_to_text_widget(
-                                self.sync_text, 
-                                f"Progress: {i+1}/{total_tracks} tracks processed ({skipped_count} skipped, {copied_count} copied)\n"
-                            )
-                        continue  # Skip to next track
-                    
-                    # Handle filename conflicts by adding a suffix (only when not skipping or file doesn't exist)
+                    # Handle filename conflicts by adding a suffix
                     counter = 1
                     original_dest_path = dest_path
                     while os.path.exists(dest_path) and dest_path != file_mapping.get(track_path):
@@ -1278,59 +1262,65 @@ class PlaylistSyncUI:
                     self.status_var.set(f"Processing track {i+1}/{total_tracks} ({progress_pct:.1f}%)")
                     
                     if os.path.exists(dest_path):
-                        # File exists but skip_existing is False - log and continue
-                        self.append_to_text_widget(self.sync_text, f"{progress_msg}File already exists, will overwrite: {os.path.basename(dest_path)}\n")
-                    
-                    # Copy or convert the file (either it doesn't exist, or we're overwriting)
-                    if is_flac or not convert_to_flac:
-                        # For FLAC files or when not converting, copy directly but potentially add album art
-                        if is_flac and preserve_album_art and convert_to_flac:
-                            self.append_to_text_widget(
-                                self.sync_text, 
-                                f"{progress_msg}Copying FLAC file with album art check: {os.path.basename(track_path)}\n"
-                            )
-                            success = self.copy_with_album_art(track_path, dest_path, temp_dir)
-                            if success:
-                                album_art_embedded_count += 1
+                        if skip_existing:
+                            skipped_count += 1
+                            if i % 20 == 0 or i+1 == total_tracks:
+                                self.append_to_text_widget(
+                                    self.sync_text, 
+                                    f"Progress: {i+1}/{total_tracks} tracks processed ({skipped_count} skipped, {copied_count} copied)\n"
+                                )
                         else:
-                            self.append_to_text_widget(
-                                self.sync_text, 
-                                f"{progress_msg}Copying directly: {os.path.basename(track_path)}\n"
-                            )
-                            shutil.copy2(track_path, dest_path)
-                        
-                        copied_count += 1
-                        if is_flac:
-                            skipped_flac_count += 1
-                    elif convert_to_flac:
-                        self.append_to_text_widget(
-                            self.sync_text, 
-                            f"{progress_msg}Converting to FLAC: {os.path.basename(track_path)}\n"
-                        )
-                        success, has_art = self.convert_to_flac(track_path, dest_path, temp_dir, preserve_album_art)
-                        if success:
-                            converted_count += 1
-                            copied_count += 1
-                            if has_art:
-                                album_art_embedded_count += 1
-                            self.append_to_text_widget(
-                                self.sync_text,
-                                f"✓ Conversion to FLAC complete for: {os.path.basename(track_path)}\n"
-                            )
-                        else:
-                            self.append_to_text_widget(
-                                self.sync_text,
-                                f"⚠ Conversion failed, falling back to regular copy for {os.path.basename(track_path)}\n"
-                            )
-                            try:
-                                # Fall back to copying the original format
-                                dest_path = os.path.join(dj_library, base_name + file_ext)
-                                file_mapping[track_path] = dest_path  # Update the mapping
+                            self.append_to_text_widget(self.sync_text, f"{progress_msg}File already exists: {os.path.basename(dest_path)}\n")
+                    else:
+                        if is_flac or not convert_to_flac:
+                            # For FLAC files or when not converting, copy directly but potentially add album art
+                            if is_flac and preserve_album_art and convert_to_flac:
+                                self.append_to_text_widget(
+                                    self.sync_text, 
+                                    f"{progress_msg}Copying FLAC file with album art check: {os.path.basename(track_path)}\n"
+                                )
+                                success = self.copy_with_album_art(track_path, dest_path, temp_dir)
+                                if success:
+                                    album_art_embedded_count += 1
+                            else:
+                                self.append_to_text_widget(
+                                    self.sync_text, 
+                                    f"{progress_msg}Copying directly: {os.path.basename(track_path)}\n"
+                                )
                                 shutil.copy2(track_path, dest_path)
+                            
+                            copied_count += 1
+                            if is_flac:
+                                skipped_flac_count += 1
+                        elif convert_to_flac:
+                            self.append_to_text_widget(
+                                self.sync_text, 
+                                f"{progress_msg}Converting to FLAC: {os.path.basename(track_path)}\n"
+                            )
+                            success, has_art = self.convert_to_flac(track_path, dest_path, temp_dir, preserve_album_art)
+                            if success:
+                                converted_count += 1
                                 copied_count += 1
-                            except Exception as e:
-                                self.append_to_text_widget(self.sync_text, f"✗ Fallback copy also failed: {str(e)}\n")
-                                error_count += 1
+                                if has_art:
+                                    album_art_embedded_count += 1
+                                self.append_to_text_widget(
+                                    self.sync_text,
+                                    f"✓ Conversion to FLAC complete for: {os.path.basename(track_path)}\n"
+                                )
+                            else:
+                                self.append_to_text_widget(
+                                    self.sync_text,
+                                    f"⚠ Conversion failed, falling back to regular copy for {os.path.basename(track_path)}\n"
+                                )
+                                try:
+                                    # Fall back to copying the original format
+                                    dest_path = os.path.join(dj_library, base_name + file_ext)
+                                    file_mapping[track_path] = dest_path  # Update the mapping
+                                    shutil.copy2(track_path, dest_path)
+                                    copied_count += 1
+                                except Exception as e:
+                                    self.append_to_text_widget(self.sync_text, f"✗ Fallback copy also failed: {str(e)}\n")
+                                    error_count += 1
                 except Exception as e:
                     self.append_to_text_widget(self.sync_text, f"✗ Error processing {track_path}: {e}\n")
                     error_count += 1
