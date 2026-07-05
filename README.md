@@ -1,10 +1,10 @@
 # FastRak
 
-A professional pipeline management system for creative and business workflows with GUI.
+A professional pipeline management system for production workflows with GUI.
 
 ## Overview
 
-FastRak is a Pipeline-Manager: a toolkit designed to streamline various production and business processes. It provides an intuitive interface for managing projects across multiple domains including audio production, visual design, web development, photography, and business operations.
+FastRak is a Pipeline-Manager: a toolkit designed to streamline various production processes. It provides an intuitive interface for managing projects across multiple domains including audio production, visual design, web development, photography, and business operations.
 
 ### Key Features
 
