@@ -246,6 +246,13 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "description": "Normalize clipboard genre strings to '; '-separated; auto-formats while open",
                 "icon": "🏷",
             },
+            {
+                "key": "format_titles",
+                "name": "Format Titles",
+                "module": "PipelineScript_Audio_FormatTitles",
+                "description": "Fix clipboard track/album titles to iTunes-style title case",
+                "icon": "🔠",
+            },
         ],
         "subtypes": {
             "DJ": {
