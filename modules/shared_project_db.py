@@ -286,7 +286,7 @@ class ProjectDatabase:
             "Visual": lambda t: t in ("GD", "FX", "VFX", "VJ") or t.startswith("Visual-"),
             "Audio": lambda t: t == "Audio",
             "Physical": lambda t: t == "Physical",
-            "RealTime": lambda t: t in ("Godot", "TD", "RealTime"),
+            "RealTime": lambda t: t in ("Godot", "TD", "Resolume", "RealTime"),
             "Photo": lambda t: t == "Photo",
             "Web": lambda t: t == "Web",
         }

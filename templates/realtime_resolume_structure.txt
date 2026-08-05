@@ -1,0 +1,25 @@
++---00_Incoming
++---01_Preproduction
+|   +---Moodboard
+|   |   +---_ASSETS
+|   |   \---_RENDER
+|   +---Storyboard
+|   |   +---_ASSETS
+|   |   \---_RENDER
+|   \---Surfaces
++---02_Production
+|   +---Affinity
+|   +---Blender
+|   +---Houdini
+|   +---Shot
+|   |   \---Shot_01_010
+|   +---_ASSET
+|   \---_PREVIEW
++---03_Setup
++---04_Outgoing
+|   \---YYY-MM-DD
+\---_LIBRARY
+    +---Documents
+    \---Pipeline
+        +---Plugins
+        \---Scripts

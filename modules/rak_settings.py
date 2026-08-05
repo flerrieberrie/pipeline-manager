@@ -89,7 +89,7 @@ class RakSettings:
 
     Categories and their default subpaths:
     - Visual: Visual/ (includes GD, CG, VJ subcategories)
-    - RealTime: RealTime/ (includes Godot, TouchDesigner subcategories)
+    - RealTime: RealTime/ (includes Godot, TouchDesigner, Resolume subcategories)
     - Audio: Audio/
     - Physical: Physical/
     - Photo: Photo/
@@ -113,7 +113,7 @@ class RakSettings:
             "RealTime": {
                 "work_subpath": "RealTime",
                 "archive_subpath": "RealTime",
-                "subcategories": ["Godot", "TD"]
+                "subcategories": ["Godot", "TD", "Resolume"]
             },
             "Audio": {
                 "work_subpath": "Audio",

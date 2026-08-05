@@ -408,6 +408,7 @@ class ProjectImporter:
         "Physical": r'^(\d{4}-\d{2}-\d{2})_3DPrint_([^_]+)_(.+)$',
         "Godot": r'^(\d{4}-\d{2}-\d{2})_Godot_([^_]+)_(.+)$',
         "TD": r'^(\d{4}-\d{2}-\d{2})_TD_([^_]+)_(.+)$',
+        "Resolume": r'^(\d{4}-\d{2}-\d{2})_RS_([^_]+)_(.+)$',
         "Audio": r'^(\d{4}-\d{2}-\d{2})_([^_]+)_(.+)$',
         "Photo": r'^(\d{4}-\d{2}-\d{2})_([^_]+)_(.+)$'
     }
@@ -827,6 +828,16 @@ class ProjectImporter:
                     "client": "Personal" if is_personal else match.group(2),
                     "project": match.group(3),
                     "type": "TD",
+                    "is_personal": is_personal
+                }
+            # RS_ (Resolume) pattern
+            match = re.match(cls.PATTERNS["Resolume"], folder_name)
+            if match:
+                return {
+                    "date": match.group(1),
+                    "client": "Personal" if is_personal else match.group(2),
+                    "project": match.group(3),
+                    "type": "Resolume",
                     "is_personal": is_personal
                 }
             # Simple: YYYY-MM-DD_ProjectName (no client)
@@ -2126,7 +2137,7 @@ class ProjectTrackerApp:
             return "Audio"
         elif project_type == "Physical":
             return "Physical"
-        elif project_type in ("Godot", "TD", "RealTime"):
+        elif project_type in ("Godot", "TD", "Resolume", "RealTime"):
             return "RealTime"
         elif project_type == "Photo":
             return "Photo"
