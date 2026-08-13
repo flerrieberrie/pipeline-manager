@@ -2375,6 +2375,10 @@ def main():
     root.bind('t', lambda e: app._toggle_tracker_view())
     root.bind('T', lambda e: app._toggle_tracker_view())
 
+    # Open project deck shortcut
+    root.bind('<Control-d>', lambda e: app.open_project_deck())
+    root.bind('<Control-D>', lambda e: app.open_project_deck())
+
     # Start the main loop
     root.mainloop()
 

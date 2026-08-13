@@ -64,6 +64,7 @@ Layer 4: Quick Actions (context-sensitive)
 ├── G or 0 = Open folder (requires selected category)
 ├── N or . = Open notes (requires selected category)
 ├── / or Ctrl+F = Focus search
+├── Ctrl+D = Open project deck (requires selected project)
 ├── ` = Cycle scope
 └── Esc = Close creation panel
 ```
@@ -83,6 +84,7 @@ Layer 4: Quick Actions (context-sensitive)
 | **Ctrl+,** | Open settings |
 | **Ctrl+L** | Open logs folder |
 | **Ctrl+F** | Focus search field |
+| **Ctrl+D** | Open quick-actions deck for the selected project |
 | **T** | Toggle project tracker between list and grid view |
 | **Esc** | Close project creation panel |
 

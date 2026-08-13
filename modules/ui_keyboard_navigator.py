@@ -351,6 +351,14 @@ class KeyboardNavigatorMixin:
         if self.focused_panel == "tracker":
             self._focus_tracker_widget()
 
+    def open_project_deck(self):
+        """Open/focus the quick-actions deck for the tracker's selected project (Ctrl+D)."""
+        if not self._should_handle_keyboard():
+            return
+        tracker = getattr(self, 'project_tracker', None)
+        if tracker is not None and hasattr(tracker, 'open_deck_for_selected'):
+            tracker.open_deck_for_selected()
+
     def _new_project(self):
         """Create new project for current category (Ctrl+N)."""
         if hasattr(self, 'project_tracker') and self.project_tracker:

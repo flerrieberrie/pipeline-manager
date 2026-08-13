@@ -39,6 +39,7 @@ from pipeline_categories import (
     category_color, project_type_info, archive_category as archive_category_for,
 )
 from ui_pipeline_categories import PIPELINE_CATEGORIES
+from ui_project_deck import ProjectDeckWindow
 
 # Module name for logging (must match setup_logging call)
 MODULE_NAME = "project_tracker"
@@ -989,6 +990,7 @@ class ProjectTrackerApp:
         # Selected categories (set). Empty = no category filter (show all).
         self.selected_categories = set()
         self.tree_item_to_project = {}  # Map tree items to project data
+        self._project_decks: Dict[str, "ProjectDeckWindow"] = {}  # Open decks, keyed by project id
 
         # Path tracking for clipboard copy
         self._current_active_path = None
@@ -1468,6 +1470,23 @@ class ProjectTrackerApp:
         # selected one (Radiobutton's selectcolor only affects bg).
         self._view_mode_buttons = {"grid": grid_btn, "list": list_btn}
 
+        def _view_btn_hint(text):
+            def on_enter(e):
+                if self.hint_callback:
+                    self.hint_callback(text)
+            def on_leave(e):
+                if self.hint_callback:
+                    self.hint_callback("")
+            return on_enter, on_leave
+
+        grid_enter, grid_leave = _view_btn_hint("Grid View: T")
+        grid_btn.bind("<Enter>", grid_enter, add="+")
+        grid_btn.bind("<Leave>", grid_leave, add="+")
+
+        list_enter, list_leave = _view_btn_hint("List View: T")
+        list_btn.bind("<Enter>", list_enter, add="+")
+        list_btn.bind("<Leave>", list_leave, add="+")
+
         # Separate scale sliders for list and grid views
         self.list_scale_value = tk.IntVar(value=100)
         self.grid_scale_value = tk.IntVar(value=100)
@@ -1631,9 +1650,73 @@ class ProjectTrackerApp:
         self.details_frame = tk.Frame(right_frame, bg="#1c2128")
         self.details_frame.pack(fill=tk.X, padx=10, pady=10)
 
-        details_title = tk.Label(self.details_frame, text="Selected Project", bg="#1c2128", fg="white",
+        details_header = tk.Frame(self.details_frame, bg="#1c2128")
+        details_header.pack(fill=tk.X, padx=10, pady=(10, 5))
+
+        details_title = tk.Label(details_header, text="Selected Project", bg="#1c2128", fg="white",
                                 font=("Arial", 10, "bold"))
-        details_title.pack(anchor=tk.W, padx=10, pady=(10, 5))
+        details_title.pack(side=tk.LEFT, anchor=tk.W)
+
+        # Deck button - styled like the FAB (fixed-size square, centered
+        # glyph, hover state) rather than a normal flat text button, since
+        # it's a primary quick-access action just like "New Project".
+        deck_btn_size = 36
+        deck_btn_bg = "#1f6feb"
+        deck_btn_bg_hover = "#388bfd"
+        deck_btn_bg_disabled = "#21262d"
+
+        self.deck_btn = tk.Frame(
+            details_header,
+            width=deck_btn_size,
+            height=deck_btn_size,
+            bg=deck_btn_bg,
+            cursor="hand2",
+        )
+        self.deck_btn.pack_propagate(False)
+        self.deck_btn.pack(side=tk.RIGHT)
+
+        self.deck_btn_label = tk.Label(
+            self.deck_btn,
+            text="🗂",
+            font=("Segoe UI Emoji", 16),
+            bg=deck_btn_bg,
+            fg="white",
+            cursor="hand2",
+        )
+        self.deck_btn_label.place(relx=0.5, rely=0.5, anchor="center")
+
+        self._deck_btn_state = tk.DISABLED
+
+        def _deck_btn_set_state(state):
+            self._deck_btn_state = state
+            bg = deck_btn_bg if state == tk.NORMAL else deck_btn_bg_disabled
+            self.deck_btn.configure(bg=bg)
+            self.deck_btn_label.configure(bg=bg)
+        self._set_deck_btn_state = _deck_btn_set_state
+        _deck_btn_set_state(tk.DISABLED)
+
+        def _deck_btn_click(e):
+            if self._deck_btn_state == tk.NORMAL:
+                self.open_deck_for_selected()
+        self.deck_btn.bind("<ButtonRelease-1>", _deck_btn_click)
+        self.deck_btn_label.bind("<ButtonRelease-1>", _deck_btn_click)
+
+        def _deck_btn_enter(e):
+            if self._deck_btn_state == tk.NORMAL:
+                self.deck_btn.configure(bg=deck_btn_bg_hover)
+                self.deck_btn_label.configure(bg=deck_btn_bg_hover)
+            if self.hint_callback:
+                self.hint_callback("Open Deck: Ctrl+D")
+
+        def _deck_btn_leave(e):
+            _deck_btn_set_state(self._deck_btn_state)
+            if self.hint_callback:
+                self.hint_callback("")
+
+        self.deck_btn.bind("<Enter>", _deck_btn_enter)
+        self.deck_btn.bind("<Leave>", _deck_btn_leave)
+        self.deck_btn_label.bind("<Enter>", _deck_btn_enter)
+        self.deck_btn_label.bind("<Leave>", _deck_btn_leave)
 
         # Two-column body: project info + status actions on the left,
         # project-context Actions sitting right next to it. Keeps the panel
@@ -1851,7 +1934,7 @@ class ProjectTrackerApp:
             self.fab_button.configure(bg="#2ea043")
             self.fab_label.configure(bg="#2ea043")
             if self.hint_callback:
-                self.hint_callback("Shortcut: Ctrl+N")
+                self.hint_callback("Create New Project: Ctrl+N")
 
         def on_leave(e):
             self.fab_button.configure(bg="#3fb950")
@@ -3220,6 +3303,7 @@ class ProjectTrackerApp:
         self.active_path_frame.pack(fill=tk.X, pady=2)  # Show by default
 
         self.open_btn.config(state=tk.DISABLED)
+        self._set_deck_btn_state(tk.DISABLED)
         self.archive_btn.config(state=tk.DISABLED)
         self.unarchive_btn.config(state=tk.DISABLED)
         self.promote_btn.config(state=tk.DISABLED)
@@ -3296,6 +3380,7 @@ class ProjectTrackerApp:
 
         # Enable buttons
         self.open_btn.config(state=tk.NORMAL)
+        self._set_deck_btn_state(tk.NORMAL)
 
         # Enable archive/unarchive/promote based on status. Promote is offered
         # for active projects whose sandbox flag is set, to clear the flag.
@@ -3459,18 +3544,39 @@ class ProjectTrackerApp:
             logger.error(f"Failed to log to {note_path}: {e}")
             messagebox.showerror("Log failed", f"Could not write note:\n{e}")
 
+    def open_deck_for_selected(self):
+        """Open (or focus) the quick-actions deck for the selected project."""
+        project = self.selected_project
+        if not project:
+            return
+        key = project.get("id")
+        existing = self._project_decks.get(key)
+        if existing is not None and existing.winfo_exists():
+            existing.focus_deck()
+            return
+        deck = ProjectDeckWindow(
+            self.root, dict(project), tracker_app=self,
+            offset_index=len(self._project_decks),
+            on_close=lambda k=key: self._project_decks.pop(k, None),
+        )
+        self._project_decks[key] = deck
+
     def _run_project_action(self, script_data: Dict):
-        """Run a project-context script, passing the selected project's folder
-        as the first positional argument."""
+        """Run a project-context script for the selected project."""
         if not self.selected_project:
             return
+        self._run_project_action_for(self.selected_project, script_data)
+
+    def _run_project_action_for(self, project: Dict, script_data: Dict):
+        """Run a project-context script, passing the given project's folder
+        as the first positional argument."""
         script_path = script_data.get("path")
         if not script_path:
             logger.warning(f"Project action has no path: {script_data.get('name')}")
             return
 
         import subprocess
-        folder = self._resolve_project_folder(self.selected_project)
+        folder = self._resolve_project_folder(project)
         extra = script_data.get("script_args") or []
         args = [sys.executable, script_path, folder, *extra]
         try:
@@ -3549,10 +3655,13 @@ class ProjectTrackerApp:
         """Open project folder in file explorer."""
         if not self.selected_project:
             return
+        self._open_project_folder(self.selected_project)
 
+    def _open_project_folder(self, project: Dict):
+        """Open the given project's folder in file explorer."""
         # Get path from project
-        stored_path = self.selected_project["path"]
-        status = self.selected_project.get("status", "active")
+        stored_path = project["path"]
+        status = project.get("status", "active")
 
         # For active projects, convert to configured work drive path
         if status == "active":
@@ -3854,6 +3963,8 @@ def main():
 
     root = tk.Tk()
     app = ProjectTrackerApp(root)
+    root.bind('<Control-d>', lambda e: app.open_deck_for_selected())
+    root.bind('<Control-D>', lambda e: app.open_deck_for_selected())
 
     try:
         root.mainloop()
