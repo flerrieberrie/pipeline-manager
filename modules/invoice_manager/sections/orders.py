@@ -412,23 +412,13 @@ class OrdersSection(Section):
             except Exception as e:
                 self._on_status_update(f"Could not create folder: {e}", "error")
                 return
-        filer = monitor.invoice_filer
-        outgoing = filer._find_outgoing_folder(order_folder) or (order_folder / "03_Outgoing")
-        outgoing.mkdir(parents=True, exist_ok=True)
-        info = filer._get_invoice_info_from_meta(order)
-        if info:
-            billing = order.get("billing", {})
-            client = (billing.get("last_name", "").strip()
-                      or billing.get("first_name", "").strip() or "Unknown")
-            try:
-                filename = filer._build_invoice_filename(
-                    info["invoice_number"], info["invoice_date"], client,
-                )
-            except Exception:
-                filename = f"Invoice_{order_number}.pdf"
-        else:
-            filename = f"Invoice_{order_number}.pdf"
-        invoice_path = outgoing / filename
+        # Invoices live in _LIBRARY, next to Order Details, under one
+        # canonical name — matches resolve_or_fetch_invoice's convention
+        # (order_project_linker.py) so there's a single local copy per
+        # order rather than a differently-named duplicate each time.
+        library_dir = order_folder / "_LIBRARY"
+        library_dir.mkdir(parents=True, exist_ok=True)
+        invoice_path = library_dir / f"Invoice_{order_number}.pdf"
         if invoice_path.exists():
             self.state.resolve_pdf_open(invoice_path)
             return

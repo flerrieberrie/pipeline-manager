@@ -469,6 +469,57 @@ class ProjectDatabase:
         else:
             logger.warning(f"Project not found: {project_id}")
 
+    def update_project_metadata(self, project_id: str, metadata_updates: Dict, auto_save: bool = True) -> None:
+        """
+        Shallow-merge metadata_updates into project['metadata']. Never removes
+        existing keys that aren't present in metadata_updates.
+
+        Args:
+            project_id: Project UUID
+            metadata_updates: Keys to add/overwrite in the project's metadata dict
+            auto_save: Whether to save after changes (set False for batch linking)
+        """
+        project = self.get_project_by_id(project_id)
+        if not project:
+            logger.warning(f"Project not found: {project_id}")
+            return
+        project.setdefault("metadata", {}).update(metadata_updates)
+        project["updated_at"] = datetime.now().isoformat()
+        if auto_save:
+            self._save()
+        logger.debug(f"Updated project metadata: {project_id} -> {metadata_updates}")
+
+    def rename_project(self, project_id: str, new_project_name: str,
+                        new_path: Optional[str] = None,
+                        new_base_directory: Optional[str] = None,
+                        auto_save: bool = True) -> None:
+        """
+        Update a project's display name and, if the folder was moved on disk,
+        its path/base_directory. Pure record update — never touches the
+        filesystem; callers must move the folder on disk first and only call
+        this once the move has succeeded.
+
+        Args:
+            project_id: Project UUID
+            new_project_name: New display name
+            new_path: New on-disk path, if the folder was renamed/moved
+            new_base_directory: New base directory, if it changed
+            auto_save: Whether to save after changes
+        """
+        project = self.get_project_by_id(project_id)
+        if not project:
+            logger.warning(f"Project not found: {project_id}")
+            return
+        project["project_name"] = new_project_name
+        if new_path is not None:
+            project["path"] = self.normalize_path(new_path)
+        if new_base_directory is not None:
+            project["base_directory"] = self.normalize_path(new_base_directory)
+        project["updated_at"] = datetime.now().isoformat()
+        if auto_save:
+            self._save()
+        logger.info(f"Renamed project {project_id} -> {new_project_name!r}")
+
     def search_projects(self, query: str, include_archived: bool = False) -> List[Dict]:
         """
         Search projects by client or project name.

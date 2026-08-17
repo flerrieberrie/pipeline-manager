@@ -34,7 +34,7 @@ to know about a category and its subtypes:
       legacy_project_types, autocomplete_category,
       work_path_category, software_defaults_args, software_chips,
       extra_fields, supports_personal, supports_sandbox,
-      creates_specs_file, specs_in_library, extension
+      creates_specs_file, extension
 
   Note: the importer's regex patterns (ProjectImporter.PATTERNS) are NOT
   derived from this file — each subtype's parsing logic has multi-pattern
@@ -90,7 +90,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
-                "specs_in_library": True,
                 "extension": None,
                 "scripts": [],
             },
@@ -114,7 +113,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
-                "specs_in_library": True,
                 "extension": None,
                 "scripts": [],
             },
@@ -138,7 +136,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
-                "specs_in_library": True,
                 "extension": None,
                 "scripts": [],
             },
@@ -189,7 +186,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
-                "specs_in_library": True,
                 "extension": None,
                 "scripts": [],
             },
@@ -219,7 +215,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
-                "specs_in_library": True,
                 "extension": None,
                 "scripts": [],
             },
@@ -244,7 +239,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
-                "specs_in_library": True,
                 "extension": None,
                 "scripts": [],
             },
@@ -297,7 +291,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": False,
                 "creates_specs_file": False,
-                "specs_in_library": False,
                 "extension": None,
                 "scripts": [
                     {
@@ -335,7 +328,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
-                "specs_in_library": True,
                 "extension": None,
                 "scripts": [],
             },
@@ -371,7 +363,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": False,
                 "supports_sandbox": False,
                 "creates_specs_file": True,
-                "specs_in_library": False,
                 "extension": "folder_structure_extensions.physical:PhysicalExtension",
                 "scripts": [
                     {
@@ -421,7 +412,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": False,
-                "specs_in_library": False,
                 "extension": "folder_structure_extensions.photo:PhotoExtension",
                 "scripts": [],
             },
@@ -500,7 +490,6 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
-                "specs_in_library": True,
                 "extension": None,
                 "scripts": [],
             },

@@ -58,6 +58,33 @@ def _load_extension(dotted: str, creator):
     return getattr(module, class_name)(creator)
 
 
+def upsert_order_number_in_specs(project_dir: str, order_number: str) -> None:
+    """Add or update an "Order #: <n>" line in a project's
+    _LIBRARY/Project_Details.txt, creating the file if it's missing (older
+    pre-automation projects may not have one yet).
+
+    Metadata-only: touches this one text file and nothing else — no other
+    file or folder in the project is created, moved, or modified.
+    """
+    docs_dir = Path(project_dir, '_LIBRARY')
+    spec_path = docs_dir / 'Project_Details.txt'
+
+    if spec_path.exists():
+        lines = spec_path.read_text(encoding='utf-8').splitlines()
+    else:
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        lines = ["PROJECT DETAILS", "======================", f"Generated: {timestamp}", ""]
+
+    lines = [l for l in lines if not l.startswith("Order #:")]
+    # Insert right after the "Project:" line if present, else append.
+    insert_at = next((i + 1 for i, l in enumerate(lines) if l.startswith("Project:")), len(lines))
+    lines.insert(insert_at, f"Order #: {order_number}")
+
+    docs_dir.mkdir(parents=True, exist_ok=True)
+    spec_path.write_text("\n".join(lines) + "\n", encoding='utf-8')
+    logger.info(f"Recorded order #{order_number} in {spec_path}")
+
+
 class GenericFolderStructureCreator(FormKeyboardMixin):
     """Manifest-driven folder structure creator.
 
@@ -600,18 +627,15 @@ class GenericFolderStructureCreator(FormKeyboardMixin):
 
     def _write_specs_file(self, project_dir, project_data, software_specs):
         try:
-            if self.manifest.get("specs_in_library"):
-                docs_dir = os.path.join(project_dir, '_LIBRARY', 'Documents')
-                os.makedirs(docs_dir, exist_ok=True)
-                spec_path = os.path.join(docs_dir, 'project_specifications.txt')
-            else:
-                spec_path = os.path.join(project_dir, 'project_specifications.txt')
+            docs_dir = os.path.join(project_dir, '_LIBRARY')
+            os.makedirs(docs_dir, exist_ok=True)
+            spec_path = os.path.join(docs_dir, 'Project_Details.txt')
 
             timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             notes = project_data.get('notes') or "No notes provided."
 
             parts = [
-                "PROJECT SPECIFICATIONS",
+                "PROJECT DETAILS",
                 "======================",
                 f"Generated: {timestamp}",
                 "",
@@ -637,7 +661,7 @@ class GenericFolderStructureCreator(FormKeyboardMixin):
             with open(spec_path, 'w', encoding='utf-8') as f:
                 f.write("\n".join(parts))
         except Exception as e:
-            messagebox.showwarning("Warning", f"Failed to create specifications file: {e}")
+            messagebox.showwarning("Warning", f"Failed to create project details file: {e}")
 
     def _handle_cancel(self):
         if self.on_cancel:

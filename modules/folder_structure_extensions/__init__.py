@@ -82,5 +82,5 @@ class FolderStructureExtension:
         return {}
 
     def write_specs_extras(self, content_parts: List[str]) -> None:
-        """Append extra sections to the project_specifications.txt content list."""
+        """Append extra sections to the Project_Details.txt content list."""
         pass

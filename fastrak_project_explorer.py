@@ -14,6 +14,7 @@ from tkinter import ttk, messagebox, scrolledtext, simpledialog
 import tkinter.font as tkfont
 import os
 import sys
+import threading
 from pathlib import Path
 import re
 import shutil
@@ -40,6 +41,10 @@ from pipeline_categories import (
 )
 from ui_pipeline_categories import PIPELINE_CATEGORIES
 from ui_project_deck import ProjectDeckWindow
+from invoice_manager.wc_monitor import sanitize_filename
+from invoice_manager.order_project_linker import (
+    resolve_or_migrate_project_details, resolve_or_fetch_order_details, resolve_or_fetch_invoice,
+)
 
 # Module name for logging (must match setup_logging call)
 MODULE_NAME = "project_tracker"
@@ -399,6 +404,147 @@ class ArchiveManager:
             return False
 
 
+class RenameManager:
+    """Renames a project's display name and its on-disk folder.
+
+    WooCommerce Order-type entries are special-cased: DocumentManager's
+    folder-matching (wc_monitor.py's _find_by_order_number) only recognizes
+    Order folders ending in "_<order_number>", so a renamed Order folder
+    must keep that trailing suffix or the next poll would fail to find it
+    and create a duplicate. Never overwrites an existing folder — if the
+    computed target path already exists, the rename is refused.
+    """
+
+    @staticmethod
+    def _resolve_folder(project: Dict) -> Path:
+        """Return the on-disk folder Path for a project, preferring the
+        work-drive path for active projects. Mirrors
+        ProjectTrackerApp._resolve_project_folder."""
+        stored_path = project.get("path", "")
+        status = project.get("status", "active")
+        if status != "active":
+            return Path(stored_path)
+        try:
+            settings = get_rak_settings()
+            folder = settings.convert_to_work_drive_path(stored_path)
+            if not Path(folder).exists():
+                folder = stored_path
+            return Path(folder)
+        except Exception:
+            return Path(stored_path)
+
+    @staticmethod
+    def is_order_linked(project: Dict) -> Optional[str]:
+        """Return the WooCommerce order number if this row's folder must
+        keep a trailing _<order_number> suffix on rename, else None."""
+        metadata = project.get("metadata", {}) or {}
+        if metadata.get("physical_subtype") == "Order" and metadata.get("woo_order_number"):
+            return str(metadata["woo_order_number"])
+        return None
+
+    @staticmethod
+    def build_new_folder_name(project: Dict, new_display_name: str, current_folder_name: str) -> str:
+        """Compute the new on-disk folder name for a rename.
+
+        Never guesses: raises ValueError if it can't derive a safe rename
+        from the data available, so the caller can surface the problem
+        instead of silently producing a wrong or duplicate-prone name.
+        """
+        safe_name = sanitize_filename(new_display_name).strip()
+        if not safe_name:
+            raise ValueError("New name is empty after removing invalid characters.")
+
+        order_number = RenameManager.is_order_linked(project)
+        if order_number:
+            # Rebuild from stable DB fields rather than string-slicing the
+            # old "Order_<num>" name, which has no literal trace of a human
+            # name in it to anchor a replace against.
+            date = project.get("date_created") or datetime.now().strftime("%Y-%m-%d")
+            client = project.get("client_name", "")
+            parts = [p for p in (date, client, safe_name, order_number) if p]
+            return "_".join(parts)
+
+        # Generic case: replace the trailing project-name segment in place,
+        # preserving whatever date/prefix/client segments already exist.
+        old_display_name = project.get("project_name", "")
+        if old_display_name and current_folder_name.endswith(old_display_name):
+            prefix = current_folder_name[: -len(old_display_name)]
+            return f"{prefix}{safe_name}"
+
+        raise ValueError(
+            f"Can't safely compute a new folder name: {old_display_name!r} "
+            f"is not the trailing segment of {current_folder_name!r}.\n\n"
+            "Rename the folder manually in Explorer, then refresh."
+        )
+
+    @staticmethod
+    def rename_project(project: Dict, new_display_name: str, db: ProjectDatabase) -> bool:
+        """
+        Rename a project's folder on disk (if needed) and update the database.
+
+        Args:
+            project: Project dictionary
+            new_display_name: New human-readable name
+            db: ProjectDatabase instance
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            source_path = RenameManager._resolve_folder(project)
+
+            if not source_path.exists():
+                messagebox.showerror(
+                    "Folder Not Found",
+                    f"Project folder does not exist:\n{source_path}"
+                )
+                return False
+
+            try:
+                new_folder_name = RenameManager.build_new_folder_name(
+                    project, new_display_name, source_path.name
+                )
+            except ValueError as e:
+                messagebox.showerror("Rename Failed", str(e))
+                return False
+
+            if new_folder_name == source_path.name:
+                # Only the display name changed — no disk move needed.
+                db.rename_project(project["id"], new_display_name)
+                logger.info(
+                    f"Renamed project {project['id']} (label only, "
+                    "folder name unchanged)"
+                )
+                return True
+
+            target_path = source_path.parent / new_folder_name
+
+            if target_path.exists():
+                messagebox.showerror(
+                    "Rename Conflict",
+                    f"A folder already exists at:\n{target_path}\n\n"
+                    "Choose a different name."
+                )
+                return False
+
+            logger.info(f"Renaming: {source_path} -> {target_path}")
+            source_path.rename(target_path)
+
+            db.rename_project(
+                project["id"], new_display_name,
+                new_path=str(target_path),
+                new_base_directory=project.get("base_directory"),
+            )
+
+            logger.info(f"Successfully renamed project: {project['id']}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to rename project: {e}")
+            messagebox.showerror("Rename Failed", f"Failed to rename project:\n{str(e)}")
+            return False
+
+
 class ProjectImporter:
     """Handles importing existing projects from filesystem."""
 
@@ -597,7 +743,8 @@ class ProjectImporter:
                         "is_personal": parsed.get("is_personal", False),
                         "is_sandbox": folder_info.get("is_sandbox_origin", False),
                         "location": parsed.get("location", ""),
-                        "physical_subtype": parsed.get("physical_subtype", "")
+                        "physical_subtype": parsed.get("physical_subtype", ""),
+                        "woo_order_number": parsed.get("woo_order_number", ""),
                     }
                 }, auto_save=False)
                 stats["imported"] += 1
@@ -721,7 +868,23 @@ class ProjectImporter:
                     "project": f"Order_{match.group(3)}",
                     "type": "Physical",
                     "is_personal": False,
-                    "physical_subtype": physical_subtype or "Order"
+                    "physical_subtype": physical_subtype or "Order",
+                    "woo_order_number": match.group(3),
+                }
+            # Renamed WC order pattern (via the app's Rename action):
+            # YYYY-MM-DD_ClientCamel_FriendlyName_OrderNumber. Must come
+            # after the strict 3-segment pattern above so unrenamed
+            # canonical folders keep matching that one first.
+            match = re.match(r'^(\d{4}-\d{2}-\d{2})_([A-Za-z][A-Za-z0-9]*)_(.+)_(\d+)$', folder_name)
+            if match and physical_subtype in ("Order", ""):
+                return {
+                    "date": match.group(1),
+                    "client": match.group(2),
+                    "project": match.group(3),
+                    "type": "Physical",
+                    "is_personal": False,
+                    "physical_subtype": physical_subtype or "Order",
+                    "woo_order_number": match.group(4),
                 }
             # Legacy WC order pattern: Order_{order_number}_{customer_name}
             match = re.match(r'^Order_(\d+)_(.+)$', folder_name)
@@ -732,7 +895,8 @@ class ProjectImporter:
                     "project": f"Order_{match.group(1)}",
                     "type": "Physical",
                     "is_personal": False,
-                    "physical_subtype": physical_subtype or "Order"
+                    "physical_subtype": physical_subtype or "Order",
+                    "woo_order_number": match.group(1),
                 }
             # 3DPrint pattern with client: YYYY-MM-DD_3DPrint_Client_Project
             match = re.match(cls.PATTERNS["Physical"], folder_name)
@@ -1736,6 +1900,7 @@ class ProjectTrackerApp:
         detail_fields = [
             ("Client", "client_name"),
             ("Project", "project_name"),
+            ("Order #", "order_number"),
             ("Location", "location"),
             ("Type", "project_type"),
             ("Date", "date_created"),
@@ -1811,6 +1976,21 @@ class ProjectTrackerApp:
         )
         self.open_btn.pack(side=tk.LEFT, padx=(0, 5))
 
+        self.rename_btn = tk.Button(
+            button_frame,
+            text="✏️ Rename",
+            command=self._rename_project,
+            bg="#1c2128",
+            fg="white",
+            font=("Arial", 9),
+            relief=tk.FLAT,
+            cursor="hand2",
+            state=tk.DISABLED,
+            padx=15,
+            pady=6
+        )
+        self.rename_btn.pack(side=tk.LEFT, padx=5)
+
         self.archive_btn = tk.Button(
             button_frame,
             text="📦 Archive",
@@ -1873,6 +2053,58 @@ class ProjectTrackerApp:
             pady=6,
         )
         self.log_note_btn.pack(side=tk.LEFT, padx=5)
+
+        # Documents row — Project Details lives in _LIBRARY for any
+        # category; Order Details / Invoice only apply once a project is
+        # linked to a WooCommerce order (Physical). Enabled/disabled per
+        # selection in _display_project_details.
+        docs_frame = tk.Frame(details_left, bg="#1c2128")
+        docs_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+
+        self.project_details_btn = tk.Button(
+            docs_frame,
+            text="📄 Project Details",
+            command=self._open_project_details,
+            bg="#1c2128",
+            fg="white",
+            font=("Arial", 9),
+            relief=tk.FLAT,
+            cursor="hand2",
+            state=tk.DISABLED,
+            padx=15,
+            pady=6
+        )
+        self.project_details_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.order_details_btn = tk.Button(
+            docs_frame,
+            text="🧾 Order Details",
+            command=self._open_order_details,
+            bg="#1c2128",
+            fg="white",
+            font=("Arial", 9),
+            relief=tk.FLAT,
+            cursor="hand2",
+            state=tk.DISABLED,
+            padx=15,
+            pady=6
+        )
+        self.order_details_btn.pack(side=tk.LEFT, padx=5)
+
+        self.invoice_btn = tk.Button(
+            docs_frame,
+            text="💳 Invoice",
+            command=self._open_invoice,
+            bg="#1c2128",
+            fg="white",
+            font=("Arial", 9),
+            relief=tk.FLAT,
+            cursor="hand2",
+            state=tk.DISABLED,
+            padx=15,
+            pady=6
+        )
+        self.invoice_btn.pack(side=tk.LEFT, padx=5)
 
         # Project-context Actions section, in the right column of details_body.
         # Populated dynamically in _display_project_details based on the
@@ -3303,11 +3535,15 @@ class ProjectTrackerApp:
         self.active_path_frame.pack(fill=tk.X, pady=2)  # Show by default
 
         self.open_btn.config(state=tk.DISABLED)
+        self.rename_btn.config(state=tk.DISABLED)
         self._set_deck_btn_state(tk.DISABLED)
         self.archive_btn.config(state=tk.DISABLED)
         self.unarchive_btn.config(state=tk.DISABLED)
         self.promote_btn.config(state=tk.DISABLED)
         self.log_note_btn.config(state=tk.DISABLED)
+        self.project_details_btn.config(state=tk.DISABLED)
+        self.order_details_btn.config(state=tk.DISABLED)
+        self.invoice_btn.config(state=tk.DISABLED)
 
         # Hide and clear the project-context Actions section.
         self._populate_actions_section(None)
@@ -3322,6 +3558,9 @@ class ProjectTrackerApp:
                     value = f"📍 {location}"
                 else:
                     value = "-"
+            elif key == "order_number":
+                order_num = project.get("metadata", {}).get("woo_order_number", "")
+                value = f"#{order_num}" if order_num else "-"
             elif key == "project_type":
                 raw_type = project.get(key, "")
                 type_info = project_type_info(raw_type)
@@ -3380,7 +3619,16 @@ class ProjectTrackerApp:
 
         # Enable buttons
         self.open_btn.config(state=tk.NORMAL)
+        self.rename_btn.config(state=tk.NORMAL)
         self._set_deck_btn_state(tk.NORMAL)
+
+        # Project Details is available for any project, any category.
+        # Order Details / Invoice only apply once a project is linked to a
+        # WooCommerce order (metadata.woo_order_number/woo_order_id).
+        self.project_details_btn.config(state=tk.NORMAL)
+        has_order_link = bool(project.get("metadata", {}).get("woo_order_number"))
+        self.order_details_btn.config(state=tk.NORMAL if has_order_link else tk.DISABLED)
+        self.invoice_btn.config(state=tk.NORMAL if has_order_link else tk.DISABLED)
 
         # Enable archive/unarchive/promote based on status. Promote is offered
         # for active projects whose sandbox flag is set, to clear the flag.
@@ -3721,6 +3969,137 @@ class ProjectTrackerApp:
             logger.error(f"Failed to open folder: {e}")
             messagebox.showerror("Error", f"Failed to open folder:\n{str(e)}")
 
+
+    def _rename_project(self):
+        """Rename the selected project's display name and, on disk, its folder."""
+        if not self.selected_project:
+            return
+
+        project = self.selected_project
+        current_name = project.get("project_name", "")
+        order_number = RenameManager.is_order_linked(project)
+
+        new_name = simpledialog.askstring(
+            "Rename Project",
+            "New project name:",
+            initialvalue=current_name,
+            parent=self.root,
+        )
+        if new_name is None:
+            return
+        new_name = new_name.strip()
+        if not new_name or new_name == current_name:
+            return
+
+        # For WooCommerce-order-linked projects, show the computed folder
+        # name (with the order number appended) before doing anything, so
+        # the order number's presence is never a silent side effect.
+        if order_number:
+            try:
+                folder = RenameManager._resolve_folder(project)
+                new_folder_name = RenameManager.build_new_folder_name(
+                    project, new_name, folder.name
+                )
+            except ValueError as e:
+                messagebox.showerror("Rename Failed", str(e))
+                return
+            response = messagebox.askyesno(
+                "Confirm Rename",
+                f"This project is linked to WooCommerce order #{order_number}.\n\n"
+                f"The folder will be renamed to:\n{new_folder_name}\n\n"
+                "The order number stays in the folder name so future "
+                "WooCommerce syncs still recognize it. Continue?"
+            )
+            if not response:
+                return
+
+        self._update_status("Renaming project...")
+        success = RenameManager.rename_project(project, new_name, self.db)
+
+        if success:
+            self._update_status("Project renamed successfully")
+            self.refresh_project_list()
+            self._clear_details()
+        else:
+            self._update_status("Rename failed")
+
+    def _open_document(self, path: Path):
+        """Open a single file with the OS-default application."""
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(path))
+            elif sys.platform == "darwin":
+                os.system(f'open "{path}"')
+            else:
+                os.system(f'xdg-open "{path}"')
+            logger.info(f"Opened document: {path}")
+        except Exception as e:
+            logger.error(f"Failed to open document {path}: {e}")
+            messagebox.showerror("Error", f"Failed to open file:\n{str(e)}")
+
+    def _open_project_details(self):
+        """Open (or migrate-then-open) the selected project's own details
+        file. Works for any category — pure local file I/O, no network."""
+        if not self.selected_project:
+            return
+        try:
+            path = resolve_or_migrate_project_details(self.selected_project)
+        except Exception as e:
+            logger.error(f"Failed to resolve project details: {e}")
+            messagebox.showerror("Project Details", f"Could not open project details:\n{str(e)}")
+            return
+        if not path:
+            messagebox.showinfo("Project Details", "No project details file found for this project.")
+            return
+        self._open_document(path)
+
+    def _fetch_and_open_document(self, fetch_fn, title: str, not_found_message: str):
+        """Run fetch_fn(project) — may hit the network — in a background
+        thread, then open the resulting path on the main thread. Shared by
+        Order Details and Invoice, which both fetch from WooCommerce."""
+        project = self.selected_project
+        if not project:
+            return
+
+        def on_done(path=None, error=None):
+            self._update_status("")
+            if error is not None:
+                messagebox.showerror(title, f"Could not open {title.lower()}:\n{error}")
+            elif not path:
+                messagebox.showinfo(title, not_found_message)
+            else:
+                self._open_document(path)
+
+        def go():
+            try:
+                path = fetch_fn(project, db=self.db)
+            except Exception as e:
+                logger.error(f"Failed to resolve {title.lower()}: {e}")
+                self.root.after(0, lambda: on_done(error=str(e)))
+                return
+            self.root.after(0, lambda: on_done(path=path))
+
+        threading.Thread(target=go, daemon=True).start()
+
+    def _open_order_details(self):
+        """Open the selected project's linked WooCommerce order details,
+        fetching them in the background if not already cached locally."""
+        self._update_status("Fetching order details...")
+        self._fetch_and_open_document(
+            resolve_or_fetch_order_details, "Order Details",
+            "No order details available for this project (order not "
+            "reachable, or WooCommerce credentials aren't configured)."
+        )
+
+    def _open_invoice(self):
+        """Open the selected project's linked WooCommerce invoice,
+        downloading and caching it in the background if not already local."""
+        self._update_status("Fetching invoice...")
+        self._fetch_and_open_document(
+            resolve_or_fetch_invoice, "Invoice",
+            "No invoice available for this project yet (not generated "
+            "on WooCommerce, or credentials aren't configured)."
+        )
 
     def _archive_project(self):
         """Archive the selected project."""

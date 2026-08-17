@@ -587,6 +587,14 @@ class WooCommerceClient:
 # DOCUMENT GENERATOR & DOWNLOADER
 # ====================================
 
+def sanitize_filename(name: str) -> str:
+    """Remove characters invalid in Windows filenames."""
+    invalid_chars = '<>:"/\\|?*'
+    for char in invalid_chars:
+        name = name.replace(char, '_')
+    return name
+
+
 class DocumentManager:
     """Handle document generation and downloading"""
 
@@ -683,11 +691,16 @@ class DocumentManager:
             pass
         return matches
 
-    def _camelcase_name(self, first: str, last: str) -> str:
+    @staticmethod
+    def _camelcase_name(first: str, last: str) -> str:
         """Combine first + last name into PascalCase, stripping non-alphanumerics.
 
         Splits on whitespace, hyphens, and underscores so multi-part names
         ("Anna-Marie", "Van Driessche") capitalize each segment.
+
+        Static so callers outside DocumentManager (e.g. order_project_linker)
+        can reuse the exact same name-derivation logic without instantiating
+        a full DocumentManager.
         """
         parts = re.split(r'[\s\-_]+', f"{first} {last}".strip())
         cleaned = []
@@ -697,8 +710,13 @@ class DocumentManager:
                 cleaned.append(p[0].upper() + p[1:])
         return "".join(cleaned) or "Guest"
 
-    def _order_date(self, order: Dict) -> str:
-        """Return YYYY-MM-DD for the order's date_created, falling back to today."""
+    @staticmethod
+    def _order_date(order: Dict) -> str:
+        """Return YYYY-MM-DD for the order's date_created, falling back to today.
+
+        Static for the same reason as _camelcase_name — reused by
+        order_project_linker for date-based matching.
+        """
         raw = order.get('date_created') or order.get('date_created_gmt') or ''
         if raw:
             # WooCommerce returns ISO 8601 like "2025-10-15T14:30:00"
@@ -710,10 +728,7 @@ class DocumentManager:
 
     def _sanitize_filename(self, name: str) -> str:
         """Remove invalid filesystem characters"""
-        invalid_chars = '<>:"/\\|?*'
-        for char in invalid_chars:
-            name = name.replace(char, '_')
-        return name
+        return sanitize_filename(name)
 
     def download_shipping_label(self, order: Dict, order_folder: Path) -> Optional[str]:
         """Download shipping label if available"""
@@ -987,14 +1002,12 @@ class InvoiceFiler:
 
             logger.info(f"Filed invoice: {invoice_path}")
 
-            # Create .lnk shortcut in the order/project folder
-            outgoing = self._find_outgoing_folder(project_folder)
-            if not outgoing:
-                # Create an Outgoing folder if one doesn't exist
-                outgoing = project_folder / "03_Outgoing"
-                outgoing.mkdir(parents=True, exist_ok=True)
+            # Create .lnk shortcut in the project's _LIBRARY folder, next to
+            # its other documentation (Project/Order Details, invoice cache).
+            library_dir = project_folder / "_LIBRARY"
+            library_dir.mkdir(parents=True, exist_ok=True)
             shortcut_name = filename.replace(".pdf", ".lnk")
-            self._create_shortcut(outgoing / shortcut_name, invoice_path)
+            self._create_shortcut(library_dir / shortcut_name, invoice_path)
 
             return invoice_path
 
@@ -1131,11 +1144,53 @@ class OrderMonitor:
                 f"Registered Physical/Order project for #{order_number} "
                 f"({customer_name}) in DB"
             )
+
+            self._auto_link_to_project(order, order_folder)
         except Exception as e:
             # Don't let DB issues break order processing — folder + invoices
             # still work, and the legacy folder-scan importer can pick the
             # row up later.
             logger.error(f"Failed to register order in project DB: {e}")
+
+    def _auto_link_to_project(self, order: Dict, order_folder: Path) -> None:
+        """Conservatively cross-link this order to an existing, unlinked
+        Physical/Project row if — and only if — exactly one such row is an
+        "exact" date+customer match. Ambiguous (0 or 2+) matches are left
+        alone for the manual "Link WooCommerce Orders" tool to resolve —
+        never guess unattended in a background polling thread.
+
+        Purely additive metadata (mirrors order_project_linker.apply_link):
+        never renames, moves, creates, or deletes a folder or file, and
+        never touches a project row that already has a link.
+        """
+        try:
+            from invoice_manager.order_project_linker import score, apply_link
+
+            unlinked_projects = [
+                p for p in self.db.get_all_projects(status="all")
+                if p.get("project_type") == "Physical"
+                and p.get("metadata", {}).get("physical_subtype") == "Project"
+                and not p.get("metadata", {}).get("woo_order_number")
+            ]
+            exact_hits = []
+            for p in unlinked_projects:
+                candidate = score(p, order)
+                if candidate and candidate.confidence == "exact":
+                    exact_hits.append(candidate)
+
+            if len(exact_hits) != 1:
+                return
+
+            order_row = self.db.get_project_by_path(str(order_folder))
+            apply_link(self.db, exact_hits[0].project_row, order, order_folder_row=order_row)
+            self.db.save()
+            self.log_status(
+                f"Auto-linked order #{order.get('number', order.get('id'))} to project "
+                f"'{exact_hits[0].project_row.get('project_name', '?')}'",
+                "success",
+            )
+        except Exception as e:
+            logger.warning(f"Auto-link check failed (non-fatal): {e}")
 
     def _assign_global_invoice_number(self, order: Dict) -> Optional[int]:
         """Reserve a number from the global registry and push it to WC.
@@ -1357,9 +1412,9 @@ class OrderMonitor:
                 self.log_status(f"Created folder for order #{order_number}", "info")
                 self._register_order_in_db(order, order_folder)
 
-            # Check if invoice already filed (look for .lnk in outgoing)
-            outgoing = self.invoice_filer._find_outgoing_folder(order_folder)
-            if outgoing and any(f.suffix == '.lnk' for f in outgoing.iterdir() if f.is_file()):
+            # Check if invoice already filed (look for .lnk in _LIBRARY)
+            library_dir = order_folder / "_LIBRARY"
+            if library_dir.exists() and any(f.suffix == '.lnk' for f in library_dir.iterdir() if f.is_file()):
                 skipped_count += 1
                 continue
 
