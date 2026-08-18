@@ -1,0 +1,21 @@
++---00_Incoming
+|   \---Captures
++---01_Processing
+|   +---RealityCapture
+|   +---Houdini
+|   \---Blender
++---02_Output
+|   +---PointCloud
+|   +---Mesh
+|   \---Textures
++---03_Postproduction
+|   +---Houdini
+|   +---Blender
+|   \---_PREVIEW
++---04_Outgoing
+|   \---YYY-MM-DD
+\---_LIBRARY
+    +---Documents
+    \---Pipeline
+        +---Plugins
+        \---Scripts

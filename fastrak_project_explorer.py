@@ -827,6 +827,26 @@ class ProjectImporter:
                     "type": "FX",
                     "is_personal": True
                 }
+            # PG pattern with client: YYYY-MM-DD_PG_Client_Project
+            match = re.match(r'^(\d{4}-\d{2}-\d{2})_PG_([^_]+)_(.+)$', folder_name)
+            if match:
+                return {
+                    "date": match.group(1),
+                    "client": "Personal" if is_personal else match.group(2),
+                    "project": match.group(3),
+                    "type": "PG",
+                    "is_personal": is_personal
+                }
+            # PG pattern without client: YYYY-MM-DD_PG_Project
+            match = re.match(r'^(\d{4}-\d{2}-\d{2})_PG_(.+)$', folder_name)
+            if match:
+                return {
+                    "date": match.group(1),
+                    "client": "Personal",
+                    "project": match.group(2),
+                    "type": "PG",
+                    "is_personal": True
+                }
             # GD pattern with explicit prefix and client: YYYY-MM-DD_GD_Client_Project
             match = re.match(r'^(\d{4}-\d{2}-\d{2})_GD_([^_]+)_(.+)$', folder_name)
             if match:
