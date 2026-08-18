@@ -455,6 +455,52 @@ def project_details_exists(project_row: Dict) -> bool:
     return _find_legacy_project_details_file(project_row) is not None
 
 
+_WEBSITE_LINE_RE = re.compile(r'^Website:\s*(.*)$')
+
+
+def get_website_url(project_row: Dict) -> str:
+    """Read the live website URL out of the project's own Project_Details.txt
+    (a "Website: <url>" line) — the file is the single source of truth for
+    this field, so hand-editing it there is the supported way to change it.
+    Returns "" if there's no details file, or no such line in it.
+    """
+    path = project_details_path(project_row)
+    if not path.exists():
+        path = _find_legacy_project_details_file(project_row)
+        if path is None:
+            return ""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        match = _WEBSITE_LINE_RE.match(line)
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def set_website_url(project_row: Dict, url: str) -> Path:
+    """Set (or, if url is blank, remove) the "Website: <url>" line in the
+    project's Project_Details.txt, migrating/creating the file as needed.
+    Returns the file path written."""
+    path = resolve_or_migrate_project_details(project_row) or project_details_path(project_row)
+    if path.exists():
+        lines = path.read_text(encoding="utf-8").splitlines()
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        lines = ["PROJECT DETAILS", "======================", f"Generated: {timestamp}", ""]
+
+    lines = [line for line in lines if not _WEBSITE_LINE_RE.match(line)]
+    url = url.strip()
+    if url:
+        lines.append(f"Website: {url}")
+
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def order_details_path(project_row: Dict) -> Optional[Path]:
     """Canonical path to a linked project's WooCommerce order-details
     file, or None if the project isn't linked to an order."""

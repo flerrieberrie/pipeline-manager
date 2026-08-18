@@ -19,6 +19,7 @@ from pathlib import Path
 import re
 import shutil
 import json
+import webbrowser
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -44,7 +45,7 @@ from ui_project_deck import ProjectDeckWindow
 from invoice_manager.wc_monitor import sanitize_filename
 from invoice_manager.order_project_linker import (
     resolve_or_migrate_project_details, resolve_or_fetch_order_details, resolve_or_fetch_invoice,
-    project_details_exists,
+    project_details_exists, get_website_url, set_website_url,
 )
 
 # Module name for logging (must match setup_logging call)
@@ -1978,6 +1979,28 @@ class ProjectTrackerApp:
         self.raw_path_label.bind("<Enter>", lambda e: self.raw_path_label.configure(fg="#79c0ff"))
         self.raw_path_label.bind("<Leave>", lambda e: self.raw_path_label.configure(fg="#58a6ff"))
 
+        # Website URL — read from/written to the project's own
+        # Project_Details.txt (a "Website: <url>" line), normally filled in
+        # once at project creation; that file is the single source of
+        # truth, so hand-editing it there works too. Left-click opens it,
+        # or prompts to set one if it's still empty; right-click always
+        # opens the edit prompt.
+        website_frame = tk.Frame(path_section, bg="#1c2128")
+        website_frame.pack(fill=tk.X, pady=2)
+
+        tk.Label(website_frame, text="Website:", bg="#1c2128", fg="#8b949e",
+                font=("Arial", 8), width=10, anchor="w").pack(side=tk.LEFT)
+
+        self.website_label = tk.Label(
+            website_frame, text="-", bg="#1c2128", fg="#58a6ff",
+            font=("Arial", 9), cursor="hand2", anchor="w"
+        )
+        self.website_label.pack(side=tk.LEFT, padx=(10, 0), fill=tk.X, expand=True)
+        self.website_label.bind("<Button-1>", lambda e: self._open_website())
+        self.website_label.bind("<Button-3>", lambda e: self._edit_website_url())
+        self.website_label.bind("<Enter>", lambda e: self.website_label.configure(fg="#79c0ff"))
+        self.website_label.bind("<Leave>", lambda e: self.website_label.configure(fg="#58a6ff"))
+
         # Action buttons
         button_frame = tk.Frame(details_left, bg="#1c2128")
         button_frame.pack(fill=tk.X, padx=10, pady=(10, 10))
@@ -3571,6 +3594,7 @@ class ProjectTrackerApp:
         # Clear path labels and tracking variables
         self.active_path_label.config(text="-")
         self.raw_path_label.config(text="-")
+        self.website_label.config(text="-")
         self._current_active_path = None
         self._current_raw_path = None
         self.active_path_frame.pack(fill=tk.X, pady=2)  # Show by default
@@ -3657,6 +3681,9 @@ class ProjectTrackerApp:
             self._current_active_path = None
             self.raw_path_label.config(text=stored_path)
             self._current_raw_path = stored_path
+
+        website_url = get_website_url(project)
+        self.website_label.config(text=website_url if website_url else "Click to set")
 
         # Enable buttons
         self.open_btn.config(state=tk.NORMAL)
@@ -3767,7 +3794,14 @@ class ProjectTrackerApp:
         self._action_buttons = []
 
         actions = self._project_actions(project) if project else []
-        if not actions:
+        # Visit Website isn't a category script — it's a fixed action shown
+        # for every Web project (the URL lives in the project's own
+        # Project_Details.txt, via the Website field above), so it's
+        # appended here rather than going through _project_actions. Shown
+        # even before a URL is set: pressing it then prompts for one.
+        project_category = archive_category_for(project.get("project_type", "")) if project else None
+        show_website_btn = project_category == "Web"
+        if not actions and not show_website_btn:
             self.actions_frame.pack_forget()
             return
 
@@ -3791,6 +3825,23 @@ class ProjectTrackerApp:
             )
             btn.pack(side=tk.TOP, fill=tk.X, pady=2)
             self._action_buttons.append(btn)
+
+        if show_website_btn:
+            website_btn = tk.Button(
+                self.actions_container,
+                text="🌐 Visit Website",
+                command=self._open_website,
+                bg="#ea580c",
+                fg="white",
+                font=("Arial", 9),
+                relief=tk.FLAT,
+                cursor="hand2",
+                padx=15,
+                pady=6,
+                anchor="w",
+            )
+            website_btn.pack(side=tk.TOP, fill=tk.X, pady=2)
+            self._action_buttons.append(website_btn)
 
     def _log_to_category_notes(self):
         """Append a timestamped, project-tagged line to the category notes
@@ -3940,6 +3991,44 @@ class ProjectTrackerApp:
         except Exception as e:
             logger.error(f"Failed to open path: {e}")
             messagebox.showerror("Error", f"Failed to open folder:\n{str(e)}")
+
+    def _open_website(self):
+        """Open the selected project's live website URL in the default
+        browser, or prompt to set one if it hasn't been set yet. The URL
+        lives in the project's own Project_Details.txt (a "Website: <url>"
+        line) — normally filled in at project creation, but this is the
+        fallback for projects that don't have one yet."""
+        if not self.selected_project:
+            return
+        url = get_website_url(self.selected_project)
+        if url:
+            webbrowser.open(url)
+            self._update_status(f"Opened: {url}")
+        else:
+            self._edit_website_url()
+
+    def _edit_website_url(self):
+        """Set, change, or clear the selected project's live website URL by
+        rewriting the "Website: <url>" line in Project_Details.txt — that
+        file is the single source of truth for this field, so hand-editing
+        it there also works and is picked up the next time it's read."""
+        if not self.selected_project:
+            return
+        project = self.selected_project
+        current = get_website_url(project)
+        new_url = simpledialog.askstring(
+            "Website URL",
+            "Live website URL (leave blank to clear):",
+            initialvalue=current,
+            parent=self.root,
+        )
+        if new_url is None:
+            return
+        new_url = new_url.strip()
+        if new_url == current:
+            return
+        set_website_url(project, new_url)
+        self._display_project_details(project)
 
     def _open_folder(self):
         """Open project folder in file explorer."""

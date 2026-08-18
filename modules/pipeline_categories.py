@@ -509,7 +509,13 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                     ("Vitepress", "vitepress", "1.6"),
                     ("Polygonjs", "polygonjs", "1.8"),
                 ],
-                "extra_fields": [],
+                "extra_fields": [
+                    {
+                        "kind": "text", "name": "website", "label": "Website URL",
+                        "default_key": "website", "default_fallback": "",
+                        "metadata_key": "website_url", "width": 30,
+                    },
+                ],
                 "supports_personal": True,
                 "supports_sandbox": True,
                 "creates_specs_file": True,
