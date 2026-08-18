@@ -44,6 +44,7 @@ from ui_project_deck import ProjectDeckWindow
 from invoice_manager.wc_monitor import sanitize_filename
 from invoice_manager.order_project_linker import (
     resolve_or_migrate_project_details, resolve_or_fetch_order_details, resolve_or_fetch_invoice,
+    project_details_exists,
 )
 
 # Module name for logging (must match setup_logging call)
@@ -2054,63 +2055,83 @@ class ProjectTrackerApp:
         )
         self.log_note_btn.pack(side=tk.LEFT, padx=5)
 
-        # Documents row — Project Details lives in _LIBRARY for any
-        # category; Order Details / Invoice only apply once a project is
-        # linked to a WooCommerce order (Physical). Enabled/disabled per
-        # selection in _display_project_details.
-        docs_frame = tk.Frame(details_left, bg="#1c2128")
-        docs_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        # Documents section, in the right column, to the left of Actions.
+        # Project Details lives in _LIBRARY for any category; Order Details /
+        # Invoice only apply once a project is linked to a WooCommerce order
+        # (Physical). Unlike Actions, this section is always shown — each
+        # button is individually enabled/disabled per selection in
+        # _display_project_details / _clear_details, never hidden as a group.
+        documents_frame = tk.Frame(details_right, bg="#1c2128")
+        documents_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 16))
+        documents_header = tk.Label(
+            documents_frame,
+            text="DOCUMENTS",
+            bg="#1c2128",
+            fg="#8b949e",
+            font=("Arial", 8, "bold"),
+            anchor="w",
+        )
+        documents_header.pack(fill=tk.X, pady=(8, 4))
+        documents_container = tk.Frame(documents_frame, bg="#1c2128")
+        documents_container.pack(fill=tk.X, pady=(0, 10))
 
         self.project_details_btn = tk.Button(
-            docs_frame,
+            documents_container,
             text="📄 Project Details",
             command=self._open_project_details,
             bg="#1c2128",
             fg="white",
+            disabledforeground="#8b949e",
             font=("Arial", 9),
             relief=tk.FLAT,
             cursor="hand2",
             state=tk.DISABLED,
+            anchor="w",
             padx=15,
             pady=6
         )
-        self.project_details_btn.pack(side=tk.LEFT, padx=(0, 5))
+        self.project_details_btn.pack(side=tk.TOP, fill=tk.X, pady=2)
 
         self.order_details_btn = tk.Button(
-            docs_frame,
+            documents_container,
             text="🧾 Order Details",
             command=self._open_order_details,
             bg="#1c2128",
             fg="white",
+            disabledforeground="#8b949e",
             font=("Arial", 9),
             relief=tk.FLAT,
             cursor="hand2",
             state=tk.DISABLED,
+            anchor="w",
             padx=15,
             pady=6
         )
-        self.order_details_btn.pack(side=tk.LEFT, padx=5)
+        self.order_details_btn.pack(side=tk.TOP, fill=tk.X, pady=2)
 
         self.invoice_btn = tk.Button(
-            docs_frame,
+            documents_container,
             text="💳 Invoice",
             command=self._open_invoice,
             bg="#1c2128",
             fg="white",
+            disabledforeground="#8b949e",
             font=("Arial", 9),
             relief=tk.FLAT,
             cursor="hand2",
             state=tk.DISABLED,
+            anchor="w",
             padx=15,
             pady=6
         )
-        self.invoice_btn.pack(side=tk.LEFT, padx=5)
+        self.invoice_btn.pack(side=tk.TOP, fill=tk.X, pady=2)
 
-        # Project-context Actions section, in the right column of details_body.
-        # Populated dynamically in _display_project_details based on the
-        # selected project's project_type. Hidden when no project is selected
-        # or no actions match. Buttons stack vertically here so the panel stays
-        # compact horizontally instead of growing taller.
+        # Project-context Actions section, in the right column, to the right
+        # of Documents. Populated dynamically in _display_project_details
+        # based on the selected project's project_type. Hidden when no
+        # project is selected or no actions match. Buttons stack vertically
+        # here so the panel stays compact horizontally instead of growing
+        # taller.
         self.actions_frame = tk.Frame(details_right, bg="#1c2128")
         self.actions_header = tk.Label(
             self.actions_frame,
@@ -3622,10 +3643,11 @@ class ProjectTrackerApp:
         self.rename_btn.config(state=tk.NORMAL)
         self._set_deck_btn_state(tk.NORMAL)
 
-        # Project Details is available for any project, any category.
-        # Order Details / Invoice only apply once a project is linked to a
-        # WooCommerce order (metadata.woo_order_number/woo_order_id).
-        self.project_details_btn.config(state=tk.NORMAL)
+        # Project Details is available for any project, any category, but
+        # only once a details file actually exists for it. Order Details /
+        # Invoice only apply once a project is linked to a WooCommerce
+        # order (metadata.woo_order_number/woo_order_id).
+        self.project_details_btn.config(state=tk.NORMAL if project_details_exists(project) else tk.DISABLED)
         has_order_link = bool(project.get("metadata", {}).get("woo_order_number"))
         self.order_details_btn.config(state=tk.NORMAL if has_order_link else tk.DISABLED)
         self.invoice_btn.config(state=tk.NORMAL if has_order_link else tk.DISABLED)
@@ -3729,7 +3751,7 @@ class ProjectTrackerApp:
             self.actions_frame.pack_forget()
             return
 
-        self.actions_frame.pack(fill=tk.Y, padx=0, pady=(5, 10))
+        self.actions_frame.pack(side=tk.LEFT, fill=tk.Y, padx=0)
 
         for category_key, script_key, subcat_key, script_data in actions:
             color = category_color(category_key.capitalize()) or "#238636"

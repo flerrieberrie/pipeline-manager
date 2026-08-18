@@ -445,6 +445,16 @@ def resolve_or_migrate_project_details(project_row: Dict) -> Optional[Path]:
     return canonical
 
 
+def project_details_exists(project_row: Dict) -> bool:
+    """Whether this project has a details file at all — canonical or
+    legacy location — without migrating it. Used to decide whether the
+    "Project Details" button should be enabled, so it doesn't rename
+    files just to answer that question."""
+    if project_details_path(project_row).exists():
+        return True
+    return _find_legacy_project_details_file(project_row) is not None
+
+
 def order_details_path(project_row: Dict) -> Optional[Path]:
     """Canonical path to a linked project's WooCommerce order-details
     file, or None if the project isn't linked to an order."""

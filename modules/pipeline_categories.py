@@ -460,7 +460,7 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
             },
             {
                 "key": "devbackup_wordpress",
-                "name": "WordPress Dev Backup",
+                "name": "WP Backup",
                 "module": "PipelineScript_Web_DevBackup",
                 "description": "Backup/restore WordPress dev sites (files + DB) and Laragon environment",
                 "icon": "💾",
