@@ -107,7 +107,11 @@
       "winget_id": "TheDocumentFoundation.LibreOffice",
       "exe": "soffice",
       "why": "Office suite - Writer / Calc / Impress",
-      "url": "https://www.libreoffice.org/download/download/"
+      "url": "https://www.libreoffice.org/download/download/",
+      "detect_paths": [
+        "%ProgramFiles%\\LibreOffice\\program\\soffice.exe",
+        "%ProgramFiles(x86)%\\LibreOffice\\program\\soffice.exe"
+      ]
     },
     {
       "name": "VLC",

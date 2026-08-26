@@ -586,6 +586,32 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
         ],
         "subtypes": {},
     },
+    "Sandbox": {
+        "color": "#3b82f6",
+        "emoji": "✍️",
+        "display_name": "Sandbox",
+        "description": "Quick, throwaway tools — capture an idea, draft, or note",
+        # Resolved via a special case in ui_pipeline_categories._resolve_folder_path
+        # (I:\_Sandbox\Write), not the generic per-category work path.
+        "work_path_key": None,
+        "category_scripts": [
+            {
+                "key": "quick_write",
+                "name": "Quick Write",
+                "module": "PipelineScript_Write_QuickWrite",
+                "description": "Create a new dated document in I:\\_Sandbox\\Write and open it in LibreOffice Writer",
+                "icon": "📝",
+            },
+            {
+                "key": "open_obsidian",
+                "name": "Obsidian",
+                "module": "PipelineScript_Write_OpenObsidian",
+                "description": "Launch Obsidian (reopens your last vault)",
+                "icon": "📓",
+            },
+        ],
+        "subtypes": {},
+    },
 }
 
 

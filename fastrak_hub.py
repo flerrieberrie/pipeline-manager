@@ -634,6 +634,23 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         self.ops_grid.columnconfigure(0, weight=1)
         self.ops_grid.columnconfigure(1, weight=1)
 
+        # Separator between Operations and Sandbox
+        sandbox_separator = tk.Frame(left_panel, bg=COLORS["border"], height=1)
+        sandbox_separator.pack(fill=tk.X, padx=15, pady=(10, 10))
+
+        # ═══════════════════════════════════════════════════════════
+        # SANDBOX SECTION — one big banner button (no header needed,
+        # the button itself says "Sandbox"). Half the height of a normal
+        # category button, full width of the two-column grid above it.
+        # ═══════════════════════════════════════════════════════════
+        self.sandbox_section = tk.Frame(left_panel, bg=COLORS["bg_card"])
+        self.sandbox_section.pack(fill=tk.X, padx=15, pady=(0, 10))
+
+        if "SANDBOX" in BUSINESS_CATEGORIES:
+            sandbox_data = BUSINESS_CATEGORIES["SANDBOX"]
+            sandbox_btn = self._create_sandbox_button(self.sandbox_section, "SANDBOX", sandbox_data)
+            sandbox_btn.pack(fill=tk.X)
+
         # ═══════════════════════════════════════════════════════════
         # SELECTED CATEGORY PANEL (below operations, as separate panel)
         # ═══════════════════════════════════════════════════════════
@@ -990,6 +1007,73 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         def on_click(e):
             # Shift+click: toggle this category in the selection.
             # Plain click: collapse the selection to just this one.
+            self.session.toggle_category(category_key, additive=event_has_shift(e))
+
+        for widget in [btn_frame, content, icon_label, name_label]:
+            widget.bind("<Enter>", on_enter)
+            widget.bind("<Leave>", on_leave)
+            widget.bind("<Button-1>", on_click)
+
+        return btn_frame
+
+    def _create_sandbox_button(self, parent, category_key, category_data):
+        """Create the wide, short Sandbox banner button.
+
+        Unlike _create_category_button's square icon-over-name layout (which
+        needs ~70px of vertical room), this lays icon and name out side by
+        side on one line so it comfortably fits at half that height.
+        """
+        color = CATEGORY_COLORS.get(category_key, COLORS["accent"])
+        icon = category_data.get("icon", "")
+        name = category_data.get("name", category_key)
+
+        btn_frame = tk.Frame(parent, bg=COLORS["bg_secondary"], height=58, cursor="hand2")
+        btn_frame.pack_propagate(False)
+
+        content = tk.Frame(btn_frame, bg=COLORS["bg_secondary"])
+        content.place(relx=0.5, rely=0.5, anchor="center")
+
+        icon_label = tk.Label(
+            content,
+            text=icon,
+            font=font.Font(family="Segoe UI Emoji", size=18),
+            fg=color,
+            bg=COLORS["bg_secondary"]
+        )
+        icon_label.pack(side=tk.LEFT)
+
+        name_label = tk.Label(
+            content,
+            text=name.upper(),
+            font=font.Font(family="Segoe UI", size=12, weight="bold"),
+            fg=COLORS["text_primary"],
+            bg=COLORS["bg_secondary"]
+        )
+        name_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        self.category_buttons[category_key] = {
+            "frame": btn_frame,
+            "content": content,
+            "icon": icon_label,
+            "name": name_label,
+            "color": color
+        }
+
+        def on_enter(e):
+            if category_key not in self.selected_categories:
+                btn_frame.configure(bg=COLORS["bg_hover"])
+                content.configure(bg=COLORS["bg_hover"])
+                icon_label.configure(bg=COLORS["bg_hover"], fg=color)
+                name_label.configure(bg=COLORS["bg_hover"])
+
+        def on_leave(e):
+            if category_key not in self.selected_categories:
+                btn_frame.configure(bg=COLORS["bg_secondary"])
+                content.configure(bg=COLORS["bg_secondary"])
+                icon_label.configure(bg=COLORS["bg_secondary"], fg=color)
+                name_label.configure(bg=COLORS["bg_secondary"])
+
+        def on_click(e):
             self.session.toggle_category(category_key, additive=event_has_shift(e))
 
         for widget in [btn_frame, content, icon_label, name_label]:
