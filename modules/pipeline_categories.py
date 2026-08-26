@@ -592,7 +592,7 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
         "display_name": "Sandbox",
         "description": "Quick, throwaway tools — capture an idea, draft, or note",
         # Resolved via a special case in ui_pipeline_categories._resolve_folder_path
-        # (I:\_Sandbox\Write), not the generic per-category work path.
+        # (I:\_Sandbox), not the generic per-category work path.
         "work_path_key": None,
         "category_scripts": [
             {

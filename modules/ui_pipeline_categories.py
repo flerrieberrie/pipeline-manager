@@ -43,12 +43,12 @@ DEFAULT_CONFIG_PATH = os.path.join(
 
 def _resolve_folder_path(category_name: str, work_path_key) -> str:
     """Build folder_path for a category. Business uses the _LIBRARY drive root,
-    Sandbox uses the _Sandbox\\Write drive root, Global has no folder, others
-    use settings.get_work_path(work_path_key)."""
+    Sandbox uses the _Sandbox drive root (same root the Sandbox Browser panel
+    shows), Global has no folder, others use settings.get_work_path(work_path_key)."""
     if category_name == "Business":
         return get_rak_settings().get_work_drive() + "\\_LIBRARY"
     if category_name == "Sandbox":
-        return get_rak_settings().get_work_drive() + "\\_Sandbox\\Write"
+        return get_rak_settings().get_work_drive() + "\\_Sandbox"
     if work_path_key is None:
         return ""
     return get_rak_settings().get_work_path(work_path_key)

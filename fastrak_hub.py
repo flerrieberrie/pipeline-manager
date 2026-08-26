@@ -66,6 +66,9 @@ from fastrak_project_explorer import ProjectTrackerApp
 # Invoice Manager is embedded in the right panel when the Business
 # category is selected (in place of the project tracker).
 from invoice_manager.app import InvoiceManager
+# Sandbox Browser is embedded in the right panel when the Sandbox
+# category is selected (in place of the project tracker).
+from ui_sandbox_browser import SandboxBrowserPanel
 
 
 def event_has_shift(event) -> bool:
@@ -729,6 +732,13 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         self._detached_invoice_window = None
         self._detached_invoice_manager = None
 
+        # Sandbox Browser panel — created here but built lazily on first
+        # Sandbox selection, same reasoning as the Invoice Manager above.
+        self.sandbox_browser_panel = tk.Frame(
+            main_container, bg=COLORS["bg_primary"]
+        )
+        self.sandbox_browser = None  # populated by _ensure_sandbox_browser
+
         # Restore state from last session (run once at startup)
         self._restore_session_state()
 
@@ -783,6 +793,30 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
             wraplength=600, anchor="w", justify="left",
         ).pack(fill=tk.X)
 
+    def _ensure_sandbox_browser(self):
+        """Lazy-create the embedded Sandbox Browser on first Sandbox select."""
+        if self.sandbox_browser is not None:
+            return
+        root_path = get_rak_settings().get_work_drive() + "\\_Sandbox"
+        self.sandbox_browser = SandboxBrowserPanel(
+            self.sandbox_browser_panel, root_path, status_callback=self.update_status,
+        )
+        self.sandbox_browser.pack(fill=tk.BOTH, expand=True)
+
+    def _show_sandbox_browser_panel(self):
+        """Swap the right-hand slot to the Sandbox Browser."""
+        if hasattr(self, 'tracker_panel'):
+            self.tracker_panel.pack_forget()
+        if hasattr(self, 'invoice_manager_panel'):
+            self.invoice_manager_panel.pack_forget()
+        self._ensure_sandbox_browser()
+        if not self.sandbox_browser_panel.winfo_ismapped():
+            self.sandbox_browser_panel.pack(
+                side=tk.RIGHT, fill=tk.BOTH, expand=True,
+            )
+        if self.sandbox_browser is not None:
+            self.sandbox_browser.refresh()
+
     def _show_invoice_manager_panel(self):
         """Swap the right-hand slot to the Invoice Manager.
 
@@ -792,6 +826,8 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         """
         if hasattr(self, 'tracker_panel'):
             self.tracker_panel.pack_forget()
+        if hasattr(self, 'sandbox_browser_panel'):
+            self.sandbox_browser_panel.pack_forget()
         if self._detached_invoice_window is not None \
                 and self._detached_invoice_window.winfo_exists():
             self.invoice_manager_panel.pack_forget()
@@ -863,17 +899,21 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         """Swap the right-hand slot back to the Project Tracker."""
         if hasattr(self, 'invoice_manager_panel'):
             self.invoice_manager_panel.pack_forget()
+        if hasattr(self, 'sandbox_browser_panel'):
+            self.sandbox_browser_panel.pack_forget()
         if not self.tracker_panel.winfo_ismapped():
             self.tracker_panel.pack(
                 side=tk.RIGHT, fill=tk.BOTH, expand=True,
             )
 
     def _hide_right_panels(self):
-        """Hide both right-hand slots (operations-only selection)."""
+        """Hide all right-hand slots (operations-only selection)."""
         if hasattr(self, 'tracker_panel'):
             self.tracker_panel.pack_forget()
         if hasattr(self, 'invoice_manager_panel'):
             self.invoice_manager_panel.pack_forget()
+        if hasattr(self, 'sandbox_browser_panel'):
+            self.sandbox_browser_panel.pack_forget()
 
     def _restore_session_state(self):
         """Restore saved state from last session (category, scope, etc.).
@@ -1126,11 +1166,13 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         self.config_manager._save_config()
 
         # Swap the right panel between Project Tracker (creative
-        # categories) and Invoice Manager (Business). When the
-        # selection is operations-only with no Business, both hide.
+        # categories), Invoice Manager (Business), and the Sandbox
+        # Browser (Sandbox). When the selection is operations-only with
+        # none of those, everything hides.
         if hasattr(self, 'project_tracker') and self.project_tracker:
             creative_selected = [k for k in self.selected_categories if k in CREATIVE_CATEGORIES]
             business_selected = "BUSINESS" in self.selected_categories
+            sandbox_selected = "SANDBOX" in self.selected_categories
             if creative_selected:
                 # Creative wins when both creative + business are picked —
                 # the tracker is the everyday view; users can still hit
@@ -1143,8 +1185,10 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
                     self.project_tracker.set_categories(category_names)
             elif business_selected:
                 self._show_invoice_manager_panel()
+            elif sandbox_selected:
+                self._show_sandbox_browser_panel()
             else:
-                # Operations-only (e.g. Global) or empty — hide both.
+                # Operations-only (e.g. Global) or empty — hide all.
                 self._hide_right_panels()
 
     def _clear_category_selection(self):
