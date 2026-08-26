@@ -276,10 +276,10 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
         "category_scripts": [
             {
                 "key": "backup_musicbee",
-                "name": "Backup Music to OneDrive",
+                "name": "Sync to Cloud",
                 "module": "PipelineScript_Audio_Backup",
                 "description": "Backup MusicBee library to OneDrive, only transferring changed or new files",
-                "icon": "💾",
+                "icon": "☁️",
             },
             {
                 "key": "format_genres",
@@ -318,14 +318,14 @@ CATEGORIES: Dict[str, Dict[str, Any]] = {
                 "scripts": [
                     {
                         "key": "sync_playlists",
-                        "name": "Sync Playlists to Traktor",
+                        "name": "Sync to Traktor",
                         "module": "PipelineScript_Audio_TraktorSync",
                         "description": "Synchronize iTunes playlists to Traktor DJ library with WAV conversion",
-                        "icon": "🔄",
+                        "icon": "💻",
                     },
                     {
                         "key": "poweramp_sync",
-                        "name": "Sync Playlists to PowerAmp",
+                        "name": "Sync to PowerAmp",
                         "module": "PipelineScript_Audio_PowerAmpSync",
                         "description": "Export MusicBee playlists to M3U8 format for PowerAmp on Android",
                         "icon": "📱",

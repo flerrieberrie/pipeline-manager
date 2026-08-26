@@ -1905,7 +1905,7 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         # Group scripts by type for display
         folder_scripts = [s for s in all_scripts if s['priority'] == 1]
         backup_scripts = [s for s in all_scripts if s['priority'] == 2]
-        other_scripts = [s for s in all_scripts if s['priority'] == 3]
+        other_scripts = [s for s in all_scripts if s['priority'] >= 3]
 
         # Add folder structure scripts
         if folder_scripts:
@@ -1977,6 +1977,9 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         # Check for backup scripts
         elif 'backup' in script_key.lower() or 'backup' in script_name.lower():
             return 2
+        # Formatting utilities sort last
+        elif 'format' in script_key.lower() or 'format' in script_name.lower():
+            return 4
         else:
             return 3
 

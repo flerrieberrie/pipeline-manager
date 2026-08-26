@@ -102,6 +102,17 @@ class SyncSettings:
     # Saved playlist selection presets
     playlist_presets: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     active_preset: str = ""
+    # Audiobooks / Podcasts sync settings (plain copy, no conversion)
+    sync_audiobooks: bool = False
+    sync_podcasts: bool = False
+    audiobooks_source_path: str = ""
+    podcasts_source_path: str = ""
+    audiobooks_dest_path: str = ""
+    podcasts_dest_path: str = ""
+    adb_audiobooks_path: str = "/storage/emulated/0/Audiobooks/"
+    adb_podcasts_path: str = "/storage/emulated/0/Podcasts/"
+    extras_skip_existing: bool = True
+    extras_mirror: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -456,6 +467,18 @@ class PowerAmpSyncApp:
                 files.append(rel)
         return files
 
+    def _walk_relative_files(self, local_dir: str) -> List[Tuple[str, str]]:
+        """List all files recursively under local_dir as (relative_path, full_path)."""
+        results: List[Tuple[str, str]] = []
+        if not local_dir or not os.path.isdir(local_dir):
+            return results
+        for root, _dirs, fnames in os.walk(local_dir):
+            for f in fnames:
+                full = os.path.join(root, f)
+                rel = os.path.relpath(full, local_dir)
+                results.append((rel, full))
+        return results
+
     def _adb_delete(self, remote_path: str) -> bool:
         """Delete a file on the device."""
         ok, _err = self._require_adb_device()
@@ -528,10 +551,18 @@ class PowerAmpSyncApp:
         main = ttk.Frame(self.root)
         main.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         main.columnconfigure(0, weight=1)
-        main.rowconfigure(2, weight=1)  # Results panel grows
+        main.rowconfigure(1, weight=1)  # Results panel grows
+
+        # === CONTENT TABS ===
+        self.content_notebook = ttk.Notebook(main)
+        self.content_notebook.grid(row=0, column=0, sticky="nsew")
+
+        playlists_tab = ttk.Frame(self.content_notebook)
+        self.content_notebook.add(playlists_tab, text="Playlists")
+        playlists_tab.columnconfigure(0, weight=1)
 
         # === OPTIONS (first, before configuration) ===
-        options_frame = ttk.LabelFrame(main, text="Options")
+        options_frame = ttk.LabelFrame(playlists_tab, text="Options")
         options_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
 
         # Destination selection (first option)
@@ -573,7 +604,7 @@ class PowerAmpSyncApp:
         self.skip_existing_checkbox.pack(side=tk.LEFT)
 
         # === CONFIGURATION (file paths) ===
-        config_frame = ttk.LabelFrame(main, text="Configuration")
+        config_frame = ttk.LabelFrame(playlists_tab, text="Configuration")
         config_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
         config_frame.columnconfigure(1, weight=1)
 
@@ -795,9 +826,14 @@ class PowerAmpSyncApp:
                                     state=tk.DISABLED)
         self.cancel_btn.pack(side=tk.LEFT)
 
+        # === AUDIOBOOKS & PODCASTS TAB ===
+        extras_tab = ttk.Frame(self.content_notebook)
+        self.content_notebook.add(extras_tab, text="Audiobooks & Podcasts")
+        self._create_extras_tab(extras_tab)
+
         # === RESULTS PANEL ===
         results_frame = ttk.LabelFrame(main, text="Sync Progress and Results")
-        results_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
+        results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
         results_frame.columnconfigure(0, weight=1)
         results_frame.rowconfigure(0, weight=1)
 
@@ -834,6 +870,137 @@ class PowerAmpSyncApp:
         self.status_bar = tk.Label(self.root, textvariable=self.status_var, bd=1,
                                    relief=tk.SUNKEN, anchor=tk.W)
         self.status_bar.grid(row=2, column=0, sticky="ew")
+
+    def _create_extras_tab(self, parent: ttk.Frame) -> None:
+        """Create the Audiobooks & Podcasts tab (plain file copy, no Opus conversion)."""
+        parent.columnconfigure(0, weight=1)
+
+        # --- Source folders ---
+        sources_frame = ttk.LabelFrame(parent, text="Source Folders")
+        sources_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        sources_frame.columnconfigure(1, weight=1)
+
+        self.sync_audiobooks_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(sources_frame, text="Audiobooks", variable=self.sync_audiobooks_var).grid(
+            row=0, column=0, sticky="w", padx=10, pady=10)
+        self.audiobooks_source_var = tk.StringVar(value="M:\\Audiobooks")
+        ttk.Entry(sources_frame, textvariable=self.audiobooks_source_var, width=50).grid(
+            row=0, column=1, sticky="ew", padx=5, pady=10)
+        ttk.Button(sources_frame, text="Browse", command=self._browse_audiobooks_source).grid(
+            row=0, column=2, padx=5, pady=10)
+
+        self.sync_podcasts_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(sources_frame, text="Downloaded Podcasts", variable=self.sync_podcasts_var).grid(
+            row=1, column=0, sticky="w", padx=10, pady=10)
+        self.podcasts_source_var = tk.StringVar(value="M:\\Podcasts")
+        ttk.Entry(sources_frame, textvariable=self.podcasts_source_var, width=50).grid(
+            row=1, column=1, sticky="ew", padx=5, pady=10)
+        ttk.Button(sources_frame, text="Browse", command=self._browse_podcasts_source).grid(
+            row=1, column=2, padx=5, pady=10)
+
+        # --- Destination ---
+        dest_frame = ttk.LabelFrame(parent, text="Destination")
+        dest_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
+        dest_frame.columnconfigure(1, weight=1)
+
+        target_row = ttk.Frame(dest_frame)
+        target_row.grid(row=0, column=0, columnspan=3, sticky="w", padx=10, pady=5)
+        ttk.Label(target_row, text="Target:").pack(side=tk.LEFT, padx=(0, 15))
+        # Bound to the same sync_target_var as the Playlists tab — one device/target for the whole app.
+        ttk.Radiobutton(target_row, text="Local Folder", variable=self.sync_target_var,
+                        value="local", command=self._on_sync_target_changed).pack(side=tk.LEFT, padx=(0, 20))
+        ttk.Radiobutton(target_row, text="Android Device (ADB)", variable=self.sync_target_var,
+                        value="adb", command=self._on_sync_target_changed).pack(side=tk.LEFT)
+        ttk.Label(target_row, textvariable=self.adb_device_status_var, foreground="gray").pack(
+            side=tk.LEFT, padx=(20, 0))
+
+        # Local destination (hidden when ADB is selected)
+        self.extras_local_frame = ttk.Frame(dest_frame)
+        self.extras_local_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        self.extras_local_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(self.extras_local_frame, text="Audiobooks Folder:").grid(row=0, column=0, sticky="w", padx=10, pady=10)
+        self.audiobooks_dest_var = tk.StringVar()
+        ttk.Entry(self.extras_local_frame, textvariable=self.audiobooks_dest_var, width=50).grid(
+            row=0, column=1, sticky="ew", padx=5, pady=10)
+        ttk.Button(self.extras_local_frame, text="Browse", command=self._browse_audiobooks_dest).grid(
+            row=0, column=2, padx=5, pady=10)
+
+        ttk.Label(self.extras_local_frame, text="Podcasts Folder:").grid(row=1, column=0, sticky="w", padx=10, pady=10)
+        self.podcasts_dest_var = tk.StringVar()
+        ttk.Entry(self.extras_local_frame, textvariable=self.podcasts_dest_var, width=50).grid(
+            row=1, column=1, sticky="ew", padx=5, pady=10)
+        ttk.Button(self.extras_local_frame, text="Browse", command=self._browse_podcasts_dest).grid(
+            row=1, column=2, padx=5, pady=10)
+
+        # ADB destination (hidden by default)
+        self.extras_adb_frame = ttk.Frame(dest_frame)
+        self.extras_adb_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        self.extras_adb_frame.columnconfigure(1, weight=1)
+        self.extras_adb_frame.grid_remove()
+
+        ttk.Label(self.extras_adb_frame, text="Audiobooks path:").grid(row=0, column=0, sticky="w", padx=10, pady=10)
+        self.adb_audiobooks_path_var = tk.StringVar(value="/storage/emulated/0/Audiobooks/")
+        ttk.Entry(self.extras_adb_frame, textvariable=self.adb_audiobooks_path_var).grid(
+            row=0, column=1, sticky="ew", padx=5, pady=10)
+
+        ttk.Label(self.extras_adb_frame, text="Podcasts path:").grid(row=1, column=0, sticky="w", padx=10, pady=10)
+        self.adb_podcasts_path_var = tk.StringVar(value="/storage/emulated/0/Podcasts/")
+        ttk.Entry(self.extras_adb_frame, textvariable=self.adb_podcasts_path_var).grid(
+            row=1, column=1, sticky="ew", padx=5, pady=10)
+
+        ttk.Label(self.extras_adb_frame,
+                  text="(pick the device in the Playlists tab's Android Device panel)",
+                  foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=10, pady=(0, 5))
+
+        # --- Options ---
+        opts_frame = ttk.LabelFrame(parent, text="Options")
+        opts_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
+
+        self.extras_skip_existing_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(opts_frame, text="Skip existing files", variable=self.extras_skip_existing_var).grid(
+            row=0, column=0, sticky="w", padx=10, pady=5)
+
+        self.extras_mirror_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts_frame, text="Delete files removed from source (mirror)",
+                        variable=self.extras_mirror_var).grid(row=0, column=1, sticky="w", padx=10, pady=5)
+
+        # --- Actions ---
+        action_frame = ttk.Frame(parent)
+        action_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=10)
+
+        self.extras_sync_btn = tk.Button(action_frame, text="Sync Now", command=self._start_sync_extras,
+                                          width=15, bg="green", fg="white", font=('', 9, 'bold'))
+        self.extras_sync_btn.pack(side=tk.LEFT, padx=(10, 5))
+
+        self.extras_cancel_btn = tk.Button(action_frame, text="Cancel", command=self._cancel_sync,
+                                            width=15, bg="red", fg="white", font=('', 9, 'bold'),
+                                            state=tk.DISABLED)
+        self.extras_cancel_btn.pack(side=tk.LEFT)
+
+    def _browse_audiobooks_source(self) -> None:
+        """Browse for the audiobooks source folder."""
+        directory = filedialog.askdirectory(title="Select Audiobooks Source Folder")
+        if directory:
+            self.audiobooks_source_var.set(directory)
+
+    def _browse_podcasts_source(self) -> None:
+        """Browse for the podcasts source folder."""
+        directory = filedialog.askdirectory(title="Select Podcasts Source Folder")
+        if directory:
+            self.podcasts_source_var.set(directory)
+
+    def _browse_audiobooks_dest(self) -> None:
+        """Browse for the audiobooks destination folder."""
+        directory = filedialog.askdirectory(title="Select Audiobooks Destination Folder")
+        if directory:
+            self.audiobooks_dest_var.set(directory)
+
+    def _browse_podcasts_dest(self) -> None:
+        """Browse for the podcasts destination folder."""
+        directory = filedialog.askdirectory(title="Select Podcasts Destination Folder")
+        if directory:
+            self.podcasts_dest_var.set(directory)
 
     def _on_quality_changed(self, event=None) -> None:
         """Handle quality combobox selection."""
@@ -900,6 +1067,18 @@ class PowerAmpSyncApp:
         combo_value = bitrate_to_combo.get(settings.opus_bitrate, "128 kbps (Recommended)")
         self.quality_combo.set(combo_value)
         self.bitrate_var.set(settings.opus_bitrate)
+
+        # Load Audiobooks/Podcasts settings
+        self.sync_audiobooks_var.set(settings.sync_audiobooks)
+        self.sync_podcasts_var.set(settings.sync_podcasts)
+        self.audiobooks_source_var.set(settings.audiobooks_source_path or "M:\\Audiobooks")
+        self.podcasts_source_var.set(settings.podcasts_source_path or "M:\\Podcasts")
+        self.audiobooks_dest_var.set(settings.audiobooks_dest_path)
+        self.podcasts_dest_var.set(settings.podcasts_dest_path)
+        self.adb_audiobooks_path_var.set(settings.adb_audiobooks_path)
+        self.adb_podcasts_path_var.set(settings.adb_podcasts_path)
+        self.extras_skip_existing_var.set(settings.extras_skip_existing)
+        self.extras_mirror_var.set(settings.extras_mirror)
 
         # Update UI state based on sync mode and target
         self._on_sync_mode_changed()
@@ -995,6 +1174,13 @@ class PowerAmpSyncApp:
         else:
             self.adb_frame.grid_remove()
             self.local_dest_frame.grid()
+
+        if is_adb:
+            self.extras_local_frame.grid_remove()
+            self.extras_adb_frame.grid()
+        else:
+            self.extras_adb_frame.grid_remove()
+            self.extras_local_frame.grid()
 
         # Update sync mode UI state as well (local music folder depends on target)
         self._on_sync_mode_changed()
@@ -1242,6 +1428,17 @@ TROUBLESHOOTING
             # Preset state (presets dict already mutated in place; explicit for clarity)
             playlist_presets=self.config_manager.settings.playlist_presets,
             active_preset=self.preset_var.get(),
+            # Audiobooks/Podcasts settings
+            sync_audiobooks=self.sync_audiobooks_var.get(),
+            sync_podcasts=self.sync_podcasts_var.get(),
+            audiobooks_source_path=self.audiobooks_source_var.get(),
+            podcasts_source_path=self.podcasts_source_var.get(),
+            audiobooks_dest_path=self.audiobooks_dest_var.get(),
+            podcasts_dest_path=self.podcasts_dest_var.get(),
+            adb_audiobooks_path=self.adb_audiobooks_path_var.get(),
+            adb_podcasts_path=self.adb_podcasts_path_var.get(),
+            extras_skip_existing=self.extras_skip_existing_var.get(),
+            extras_mirror=self.extras_mirror_var.get(),
         )
         self.status_var.set("Settings saved")
         messagebox.showinfo("Settings Saved", "Configuration saved successfully!")
@@ -2129,9 +2326,7 @@ TROUBLESHOOTING
 
         # Start sync in thread
         self.syncing = True
-        self.sync_btn.config(state=tk.DISABLED)
-        self.sync_playlists_btn.config(state=tk.DISABLED)
-        self.cancel_btn.config(state=tk.NORMAL)
+        self._set_sync_buttons_state(tk.DISABLED, tk.NORMAL)
 
         self.sync_text.delete(1.0, tk.END)
         self.results_notebook.select(1)  # Switch to Sync Progress tab
@@ -2537,6 +2732,153 @@ TROUBLESHOOTING
 
         threading.Thread(target=sync_thread, daemon=True).start()
 
+    def _start_sync_extras(self) -> None:
+        """Sync audiobooks and/or downloaded podcasts — plain file copy, no conversion."""
+        categories = []  # (label, source_dir, local_dest_var, adb_path_var)
+        if self.sync_audiobooks_var.get():
+            categories.append(("Audiobooks", self.audiobooks_source_var.get().strip(),
+                                self.audiobooks_dest_var, self.adb_audiobooks_path_var))
+        if self.sync_podcasts_var.get():
+            categories.append(("Podcasts", self.podcasts_source_var.get().strip(),
+                                self.podcasts_dest_var, self.adb_podcasts_path_var))
+
+        if not categories:
+            messagebox.showwarning("No Selection", "Select Audiobooks and/or Downloaded Podcasts to sync.")
+            return
+
+        for label, source_dir, _local_var, _adb_var in categories:
+            if not source_dir or not os.path.isdir(source_dir):
+                messagebox.showwarning("Invalid Source", f"{label} source folder does not exist:\n{source_dir}")
+                return
+
+        is_adb_mode = self.sync_target_var.get() == "adb"
+
+        if is_adb_mode:
+            ok, err_msg = self._resolve_adb_device()
+            if not ok:
+                messagebox.showerror("ADB Device", err_msg)
+                return
+            for entry in self._device_entries:
+                if entry[0] == self.adb_device_id:
+                    self.adb_device_combo_var.set(entry[2])
+                    self.adb_device_status_var.set(f"Connected: {entry[2]}")
+                    break
+        else:
+            for label, _source_dir, local_var, _adb_var in categories:
+                if not local_var.get().strip():
+                    messagebox.showwarning("No Destination", f"Please specify a destination folder for {label}.")
+                    return
+            for label, _source_dir, local_var, _adb_var in categories:
+                try:
+                    os.makedirs(local_var.get().strip(), exist_ok=True)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Cannot create destination folder for {label}:\n{e}")
+                    return
+
+        skip_existing = self.extras_skip_existing_var.get()
+        mirror = self.extras_mirror_var.get()
+
+        target_label = "Android device (ADB)" if is_adb_mode else "local folder"
+        msg = f"Sync {', '.join(c[0] for c in categories)} to {target_label}?"
+        if mirror:
+            msg += "\n\nMirror sync: files removed from source will be deleted on the destination."
+        if not messagebox.askyesno("Confirm Sync", msg):
+            return
+
+        self.syncing = True
+        self._set_sync_buttons_state(tk.DISABLED, tk.NORMAL)
+
+        self.sync_text.delete(1.0, tk.END)
+        self.results_notebook.select(1)  # Switch to Sync Progress tab
+
+        def sync_thread():
+            for label, source_dir, local_var, adb_var in categories:
+                if not self.syncing:
+                    break
+
+                self._append_sync_text(f"=== {label} ===\n")
+
+                files = self._walk_relative_files(source_dir)
+                total = len(files)
+                self._append_sync_text(f"Found {total} file(s) in {source_dir}\n")
+
+                dest_root = adb_var.get().strip().rstrip('/') if is_adb_mode else local_var.get().strip()
+                self._append_sync_text(f"Destination: {dest_root}\n\n")
+
+                expected = {rel.replace('\\', '/') for rel, _full in files}
+
+                if is_adb_mode:
+                    existing_set = set(self._adb_list_files(dest_root))
+                else:
+                    existing_set = set(self._local_list_files(dest_root))
+
+                copied = 0
+                pushed = 0
+                skipped = 0
+                errors = 0
+
+                for i, (rel_path, full_path) in enumerate(files):
+                    if not self.syncing:
+                        self._append_sync_text("\nSync cancelled by user.\n")
+                        break
+
+                    self.root.after(0, lambda n=i + 1, t=total, lbl=label:
+                                     self.status_var.set(f"Syncing {lbl} {n}/{t}"))
+
+                    rel_key = rel_path.replace('\\', '/').lstrip('/')
+
+                    if skip_existing and rel_key in existing_set:
+                        skipped += 1
+                        continue
+
+                    if is_adb_mode:
+                        dest_path = dest_root + '/' + rel_key
+                        success, error = self._adb_push(full_path, dest_path)
+                        if success:
+                            pushed += 1
+                        else:
+                            self._append_sync_text(f"✗ {rel_path}: {error}\n")
+                            errors += 1
+                    else:
+                        dest_path = os.path.join(dest_root, rel_path)
+                        if self._copy_file(full_path, dest_path):
+                            copied += 1
+                        else:
+                            self._append_sync_text(f"✗ Failed to copy: {rel_path}\n")
+                            errors += 1
+
+                self._append_sync_text(f"\n{label} sync: ")
+                if is_adb_mode:
+                    self._append_sync_text(f"pushed {pushed}, ")
+                else:
+                    self._append_sync_text(f"copied {copied}, ")
+                self._append_sync_text(f"skipped {skipped}, errors {errors}\n")
+
+                if mirror and self.syncing:
+                    self._append_sync_text(f"\nCleaning up orphaned {label.lower()} files...\n")
+                    deleted = 0
+                    orphaned = [f for f in existing_set if f not in expected]
+                    for orphan in orphaned:
+                        if not self.syncing:
+                            break
+                        if is_adb_mode:
+                            if self._adb_delete(dest_root + '/' + orphan):
+                                deleted += 1
+                        else:
+                            try:
+                                os.remove(os.path.join(dest_root, orphan))
+                                deleted += 1
+                            except OSError:
+                                pass
+                    self._append_sync_text(f"Deleted {deleted} orphaned file(s)\n")
+
+                self._append_sync_text("\n" + "=" * 50 + "\n\n")
+
+            self._append_sync_text("Sync complete!\n")
+            self.root.after(0, lambda: self._sync_complete("Audiobooks/Podcasts sync complete!"))
+
+        threading.Thread(target=sync_thread, daemon=True).start()
+
     def _append_sync_text(self, text: str) -> None:
         """Append text to sync output (thread-safe)."""
         self.root.after(0, lambda: self._do_append_sync_text(text))
@@ -2547,15 +2889,21 @@ TROUBLESHOOTING
         self.sync_text.see(tk.END)
         self.root.update_idletasks()
 
-    def _sync_complete(self) -> None:
+    def _set_sync_buttons_state(self, start_state: str, cancel_state: str) -> None:
+        """Enable/disable every Sync/Cancel button together (only one sync runs at a time)."""
+        self.sync_btn.config(state=start_state)
+        self.sync_playlists_btn.config(state=start_state)
+        self.extras_sync_btn.config(state=start_state)
+        self.cancel_btn.config(state=cancel_state)
+        self.extras_cancel_btn.config(state=cancel_state)
+
+    def _sync_complete(self, message: str = "Playlists have been synced to PowerAmp format!") -> None:
         """Handle sync completion."""
         self.syncing = False
-        self.sync_btn.config(state=tk.NORMAL)
-        self.sync_playlists_btn.config(state=tk.NORMAL)
-        self.cancel_btn.config(state=tk.DISABLED)
+        self._set_sync_buttons_state(tk.NORMAL, tk.DISABLED)
         self.status_var.set("Sync complete")
 
-        messagebox.showinfo("Sync Complete", "Playlists have been synced to PowerAmp format!")
+        messagebox.showinfo("Sync Complete", message)
 
     def _cancel_sync(self) -> None:
         """Cancel the current sync operation."""
