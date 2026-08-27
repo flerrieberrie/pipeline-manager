@@ -42,7 +42,7 @@ import urllib.parse
 # CONSTANTS AND CONFIGURATION
 # ============================================================================
 
-APP_NAME = "MusicBee to PowerAmp Sync"
+APP_NAME = "Sync to PowerAmp"
 APP_VERSION = "2.1.0"
 
 # Configuration paths
@@ -103,8 +103,6 @@ class SyncSettings:
     playlist_presets: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     active_preset: str = ""
     # Audiobooks / Podcasts sync settings (plain copy, no conversion)
-    sync_audiobooks: bool = False
-    sync_podcasts: bool = False
     audiobooks_source_path: str = ""
     podcasts_source_path: str = ""
     audiobooks_dest_path: str = ""
@@ -544,29 +542,21 @@ class PowerAmpSyncApp:
         header = tk.Frame(self.root, bg=HEADER_COLOR, height=60)
         header.grid(row=0, column=0, sticky="ew")
         header.grid_propagate(False)
-        tk.Label(header, text="PowerAmp Sync", font=("Arial", 16, "bold"),
+        tk.Label(header, text=APP_NAME, font=("Arial", 16, "bold"),
                  fg="white", bg=HEADER_COLOR).place(relx=0.5, rely=0.5, anchor=tk.CENTER)
 
         # Main content
         main = ttk.Frame(self.root)
         main.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
         main.columnconfigure(0, weight=1)
-        main.rowconfigure(1, weight=1)  # Results panel grows
+        main.rowconfigure(2, weight=1)  # Results panel grows
 
-        # === CONTENT TABS ===
-        self.content_notebook = ttk.Notebook(main)
-        self.content_notebook.grid(row=0, column=0, sticky="nsew")
+        # === UNIVERSAL SETTINGS (shared across every tab below) ===
+        universal_frame = ttk.LabelFrame(main, text="Settings")
+        universal_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        universal_frame.columnconfigure(0, weight=1)
 
-        playlists_tab = ttk.Frame(self.content_notebook)
-        self.content_notebook.add(playlists_tab, text="Playlists")
-        playlists_tab.columnconfigure(0, weight=1)
-
-        # === OPTIONS (first, before configuration) ===
-        options_frame = ttk.LabelFrame(playlists_tab, text="Options")
-        options_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-
-        # Destination selection (first option)
-        target_row = ttk.Frame(options_frame)
+        target_row = ttk.Frame(universal_frame)
         target_row.grid(row=0, column=0, sticky="w", padx=10, pady=5)
 
         ttk.Label(target_row, text="Destination:").pack(side=tk.LEFT, padx=(0, 15))
@@ -579,9 +569,69 @@ class PowerAmpSyncApp:
         # sync_mode_var still needed for internal logic
         self.sync_mode_var = tk.StringVar(value="music_and_playlists")
 
+        # Device picker — shared by every tab, only relevant when target=adb.
+        # Combobox lists every attached device so the user can disambiguate
+        # multi-device setups (phone + emulator, two phones, stale wireless
+        # adb sessions, etc.) instead of silently grabbing the first one and
+        # hitting "more than one device/emulator" during sync.
+        self.universal_adb_frame = ttk.Frame(universal_frame)
+        self.universal_adb_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 5))
+        self.universal_adb_frame.grid_remove()  # Hidden by default (target=local)
+
+        adb_status_row = ttk.Frame(self.universal_adb_frame)
+        adb_status_row.grid(row=0, column=0, sticky="ew")
+        ttk.Label(adb_status_row, text="Device:").pack(side=tk.LEFT, padx=(0, 10))
+        self.adb_device_combo_var = tk.StringVar()
+        self.adb_device_combo = ttk.Combobox(
+            adb_status_row, textvariable=self.adb_device_combo_var,
+            state="readonly", width=42,
+        )
+        self.adb_device_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.adb_device_combo.bind("<<ComboboxSelected>>", self._on_adb_device_selected)
+        self.detect_device_btn = ttk.Button(
+            adb_status_row, text="Refresh", command=self._detect_adb_device, width=10,
+        )
+        self.detect_device_btn.pack(side=tk.LEFT, padx=(8, 0))
+        ttk.Button(adb_status_row, text="?", command=self._show_adb_help, width=3).pack(side=tk.LEFT, padx=(5, 0))
+
+        # Status sub-row — shows readiness / multi-device hints under the picker
+        adb_status_row2 = ttk.Frame(self.universal_adb_frame)
+        adb_status_row2.grid(row=1, column=0, sticky="w", pady=(3, 0))
+        self.adb_device_status_var = tk.StringVar(value="No device detected")
+        ttk.Label(adb_status_row2, textvariable=self.adb_device_status_var, foreground="gray").pack(side=tk.LEFT)
+
+        # === CONTENT TABS (mode selector sits below the universal settings) ===
+        # 'clam' is required on Windows for the tab background/foreground
+        # colors below to actually render — the native theme silently
+        # ignores TNotebook.Tab color overrides (font/padding still apply
+        # under native, but color doesn't, which is why an earlier pass at
+        # this only changed size, not color).
+        tab_style = ttk.Style()
+        tab_style.theme_use("clam")
+        tab_style.configure("PowerAmp.TNotebook.Tab",
+                            font=("Segoe UI", 9, "bold"),
+                            padding=[12, 6],
+                            background="#bdc3c7",
+                            foreground=HEADER_COLOR)
+        tab_style.map("PowerAmp.TNotebook.Tab",
+                     background=[("selected", HEADER_COLOR)],
+                     foreground=[("selected", "#ffffff")],
+                     padding=[("selected", [16, 9])])
+
+        self.content_notebook = ttk.Notebook(main, style="PowerAmp.TNotebook")
+        self.content_notebook.grid(row=1, column=0, sticky="nsew")
+
+        playlists_tab = ttk.Frame(self.content_notebook)
+        self.content_notebook.add(playlists_tab, text="\U0001F3B5 Playlist Selection")
+        playlists_tab.columnconfigure(0, weight=1)
+
+        # === OPTIONS (Playlist-Selection-specific, before configuration) ===
+        options_frame = ttk.LabelFrame(playlists_tab, text="Options")
+        options_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+
         # Conversion options
         conv_row = ttk.Frame(options_frame)
-        conv_row.grid(row=1, column=0, sticky="w", padx=10, pady=5)
+        conv_row.grid(row=0, column=0, sticky="w", padx=10, pady=5)
 
         self.convert_opus_var = tk.BooleanVar(value=True)
         self.convert_opus_checkbox = ttk.Checkbutton(conv_row, text="Convert all audio to Opus",
@@ -597,7 +647,7 @@ class PowerAmpSyncApp:
         self.quality_combo.bind("<<ComboboxSelected>>", self._on_quality_changed)
 
         skip_row = ttk.Frame(options_frame)
-        skip_row.grid(row=2, column=0, sticky="w", padx=10, pady=5)
+        skip_row.grid(row=1, column=0, sticky="w", padx=10, pady=5)
 
         self.skip_existing_var = tk.BooleanVar(value=True)
         self.skip_existing_checkbox = ttk.Checkbutton(skip_row, text="Skip existing files", variable=self.skip_existing_var)
@@ -660,47 +710,23 @@ class PowerAmpSyncApp:
 
         current_row += 1
 
-        # ADB destination frame (initially hidden)
-        self.adb_frame = ttk.LabelFrame(config_frame, text="Android Device (ADB)")
+        # ADB destination frame (initially hidden) — device picker itself now
+        # lives in the universal Settings section above; this only holds the
+        # Playlist-Selection-specific remote paths.
+        self.adb_frame = ttk.LabelFrame(config_frame, text="Android (ADB) Paths")
         self.adb_frame.grid(row=current_row, column=0, columnspan=3, sticky="ew", padx=10, pady=10)
         self.adb_frame.columnconfigure(1, weight=1)
         self.adb_frame.grid_remove()  # Hidden by default
 
-        # Device picker row — Combobox lists every attached device so the user
-        # can disambiguate multi-device setups (phone + emulator, two phones,
-        # stale wireless adb sessions, etc.) instead of silently grabbing the
-        # first one and hitting "more than one device/emulator" during sync.
-        adb_status_row = ttk.Frame(self.adb_frame)
-        adb_status_row.grid(row=0, column=0, columnspan=3, sticky="ew", padx=5, pady=3)
-        ttk.Label(adb_status_row, text="Device:").pack(side=tk.LEFT, padx=(0, 10))
-        self.adb_device_combo_var = tk.StringVar()
-        self.adb_device_combo = ttk.Combobox(
-            adb_status_row, textvariable=self.adb_device_combo_var,
-            state="readonly", width=42,
-        )
-        self.adb_device_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.adb_device_combo.bind("<<ComboboxSelected>>", self._on_adb_device_selected)
-        self.detect_device_btn = ttk.Button(
-            adb_status_row, text="Refresh", command=self._detect_adb_device, width=10,
-        )
-        self.detect_device_btn.pack(side=tk.LEFT, padx=(8, 0))
-        ttk.Button(adb_status_row, text="?", command=self._show_adb_help, width=3).pack(side=tk.LEFT, padx=(5, 0))
-
-        # Status sub-row — shows readiness / multi-device hints under the picker
-        adb_status_row2 = ttk.Frame(self.adb_frame)
-        adb_status_row2.grid(row=1, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 3))
-        self.adb_device_status_var = tk.StringVar(value="No device detected")
-        ttk.Label(adb_status_row2, textvariable=self.adb_device_status_var, foreground="gray").pack(side=tk.LEFT)
-
         # ADB Music path
-        ttk.Label(self.adb_frame, text="Music path:").grid(row=2, column=0, sticky="w", padx=5, pady=3)
+        ttk.Label(self.adb_frame, text="Music path:").grid(row=0, column=0, sticky="w", padx=5, pady=3)
         self.adb_music_path_var = tk.StringVar(value="/storage/emulated/0/Music/")
-        ttk.Entry(self.adb_frame, textvariable=self.adb_music_path_var).grid(row=2, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
+        ttk.Entry(self.adb_frame, textvariable=self.adb_music_path_var).grid(row=0, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
 
         # ADB Playlist path
-        ttk.Label(self.adb_frame, text="Playlist path:").grid(row=3, column=0, sticky="w", padx=5, pady=3)
+        ttk.Label(self.adb_frame, text="Playlist path:").grid(row=1, column=0, sticky="w", padx=5, pady=3)
         self.adb_playlist_path_var = tk.StringVar(value="/storage/emulated/0/Music/Playlists/")
-        ttk.Entry(self.adb_frame, textvariable=self.adb_playlist_path_var).grid(row=3, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
+        ttk.Entry(self.adb_frame, textvariable=self.adb_playlist_path_var).grid(row=1, column=1, columnspan=2, sticky="ew", padx=5, pady=3)
 
         current_row += 1
 
@@ -828,12 +854,12 @@ class PowerAmpSyncApp:
 
         # === AUDIOBOOKS & PODCASTS TAB ===
         extras_tab = ttk.Frame(self.content_notebook)
-        self.content_notebook.add(extras_tab, text="Audiobooks & Podcasts")
+        self.content_notebook.add(extras_tab, text="\U0001F3A7 Audiobooks & Podcasts")
         self._create_extras_tab(extras_tab)
 
         # === RESULTS PANEL ===
         results_frame = ttk.LabelFrame(main, text="Sync Progress and Results")
-        results_frame.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        results_frame.grid(row=2, column=0, sticky="nsew", padx=5, pady=5)
         results_frame.columnconfigure(0, weight=1)
         results_frame.rowconfigure(0, weight=1)
 
@@ -875,83 +901,114 @@ class PowerAmpSyncApp:
         """Create the Audiobooks & Podcasts tab (plain file copy, no Opus conversion)."""
         parent.columnconfigure(0, weight=1)
 
+        # Shared column geometry so the label/entry/browse/sync columns line
+        # up vertically across the three separate frames below (Source
+        # Folders, Local destination, ADB destination) regardless of which
+        # destination frame happens to be visible.
+        LABEL_WIDTH = 20
+        ENTRY_WIDTH = 50
+        BROWSE_COL_MINSIZE = 90
+
         # --- Source folders ---
+        # Just source config here - no action button. Syncing happens from
+        # the Destination rows below (where the files are actually going),
+        # which is where the Sync button for each mode now lives.
         sources_frame = ttk.LabelFrame(parent, text="Source Folders")
         sources_frame.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         sources_frame.columnconfigure(1, weight=1)
+        sources_frame.columnconfigure(2, minsize=BROWSE_COL_MINSIZE)
+        # No Sync button here (it lives on the Destination rows below), but
+        # reserve the same column 3 width anyway - otherwise this frame has
+        # one fewer fixed-width column than Destination's, so its Entry
+        # (the only stretchy column) would soak up the extra space and end
+        # up wider than the destination path fields.
+        sources_frame.columnconfigure(3, minsize=BROWSE_COL_MINSIZE)
 
-        self.sync_audiobooks_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(sources_frame, text="Audiobooks", variable=self.sync_audiobooks_var).grid(
+        ttk.Label(sources_frame, text="Audiobooks:", width=LABEL_WIDTH, anchor="w").grid(
             row=0, column=0, sticky="w", padx=10, pady=10)
         self.audiobooks_source_var = tk.StringVar(value="M:\\Audiobooks")
-        ttk.Entry(sources_frame, textvariable=self.audiobooks_source_var, width=50).grid(
+        ttk.Entry(sources_frame, textvariable=self.audiobooks_source_var, width=ENTRY_WIDTH).grid(
             row=0, column=1, sticky="ew", padx=5, pady=10)
         ttk.Button(sources_frame, text="Browse", command=self._browse_audiobooks_source).grid(
             row=0, column=2, padx=5, pady=10)
 
-        self.sync_podcasts_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(sources_frame, text="Downloaded Podcasts", variable=self.sync_podcasts_var).grid(
+        ttk.Label(sources_frame, text="Downloaded Podcasts:", width=LABEL_WIDTH, anchor="w").grid(
             row=1, column=0, sticky="w", padx=10, pady=10)
         self.podcasts_source_var = tk.StringVar(value="M:\\Podcasts")
-        ttk.Entry(sources_frame, textvariable=self.podcasts_source_var, width=50).grid(
+        ttk.Entry(sources_frame, textvariable=self.podcasts_source_var, width=ENTRY_WIDTH).grid(
             row=1, column=1, sticky="ew", padx=5, pady=10)
         ttk.Button(sources_frame, text="Browse", command=self._browse_podcasts_source).grid(
             row=1, column=2, padx=5, pady=10)
 
         # --- Destination ---
+        # Target (Local/ADB) and the device picker itself now live in the
+        # universal Settings section above the tabs — this frame only holds
+        # the Audiobooks/Podcasts-specific paths, each with its own Sync
+        # button - click the one for wherever it's actually going.
         dest_frame = ttk.LabelFrame(parent, text="Destination")
         dest_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=5)
         dest_frame.columnconfigure(1, weight=1)
 
-        target_row = ttk.Frame(dest_frame)
-        target_row.grid(row=0, column=0, columnspan=3, sticky="w", padx=10, pady=5)
-        ttk.Label(target_row, text="Target:").pack(side=tk.LEFT, padx=(0, 15))
-        # Bound to the same sync_target_var as the Playlists tab — one device/target for the whole app.
-        ttk.Radiobutton(target_row, text="Local Folder", variable=self.sync_target_var,
-                        value="local", command=self._on_sync_target_changed).pack(side=tk.LEFT, padx=(0, 20))
-        ttk.Radiobutton(target_row, text="Android Device (ADB)", variable=self.sync_target_var,
-                        value="adb", command=self._on_sync_target_changed).pack(side=tk.LEFT)
-        ttk.Label(target_row, textvariable=self.adb_device_status_var, foreground="gray").pack(
-            side=tk.LEFT, padx=(20, 0))
-
         # Local destination (hidden when ADB is selected)
         self.extras_local_frame = ttk.Frame(dest_frame)
-        self.extras_local_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        self.extras_local_frame.grid(row=0, column=0, columnspan=4, sticky="ew")
         self.extras_local_frame.columnconfigure(1, weight=1)
+        self.extras_local_frame.columnconfigure(2, minsize=BROWSE_COL_MINSIZE)
 
-        ttk.Label(self.extras_local_frame, text="Audiobooks Folder:").grid(row=0, column=0, sticky="w", padx=10, pady=10)
+        ttk.Label(self.extras_local_frame, text="Audiobooks Folder:", width=LABEL_WIDTH, anchor="w").grid(
+            row=0, column=0, sticky="w", padx=10, pady=10)
         self.audiobooks_dest_var = tk.StringVar()
-        ttk.Entry(self.extras_local_frame, textvariable=self.audiobooks_dest_var, width=50).grid(
+        ttk.Entry(self.extras_local_frame, textvariable=self.audiobooks_dest_var, width=ENTRY_WIDTH).grid(
             row=0, column=1, sticky="ew", padx=5, pady=10)
         ttk.Button(self.extras_local_frame, text="Browse", command=self._browse_audiobooks_dest).grid(
             row=0, column=2, padx=5, pady=10)
+        self.sync_audiobooks_btn = tk.Button(self.extras_local_frame, text="Sync", command=self._start_sync_audiobooks,
+                                              width=10, bg="green", fg="white", font=('', 9, 'bold'))
+        self.sync_audiobooks_btn.grid(row=0, column=3, padx=(0, 10), pady=10)
 
-        ttk.Label(self.extras_local_frame, text="Podcasts Folder:").grid(row=1, column=0, sticky="w", padx=10, pady=10)
+        ttk.Label(self.extras_local_frame, text="Podcasts Folder:", width=LABEL_WIDTH, anchor="w").grid(
+            row=1, column=0, sticky="w", padx=10, pady=10)
         self.podcasts_dest_var = tk.StringVar()
-        ttk.Entry(self.extras_local_frame, textvariable=self.podcasts_dest_var, width=50).grid(
+        ttk.Entry(self.extras_local_frame, textvariable=self.podcasts_dest_var, width=ENTRY_WIDTH).grid(
             row=1, column=1, sticky="ew", padx=5, pady=10)
         ttk.Button(self.extras_local_frame, text="Browse", command=self._browse_podcasts_dest).grid(
             row=1, column=2, padx=5, pady=10)
+        self.sync_podcasts_btn = tk.Button(self.extras_local_frame, text="Sync", command=self._start_sync_podcasts,
+                                            width=10, bg="green", fg="white", font=('', 9, 'bold'))
+        self.sync_podcasts_btn.grid(row=1, column=3, padx=(0, 10), pady=10)
 
-        # ADB destination (hidden by default)
+        # ADB destination (hidden by default) — no Browse (can't pick a
+        # phone path from a file dialog), so Sync sits in column 2 - the
+        # same column Browse occupies in the other two frames - instead of
+        # column 3, otherwise it'd sit one column further right than Browse
+        # and the rows would look staggered instead of aligned. Column 3
+        # becomes the phantom spacer instead, to keep this frame's total
+        # column-width budget (and therefore its Entry width) matching.
         self.extras_adb_frame = ttk.Frame(dest_frame)
-        self.extras_adb_frame.grid(row=1, column=0, columnspan=3, sticky="ew")
+        self.extras_adb_frame.grid(row=0, column=0, columnspan=4, sticky="ew")
         self.extras_adb_frame.columnconfigure(1, weight=1)
+        self.extras_adb_frame.columnconfigure(3, minsize=BROWSE_COL_MINSIZE)
         self.extras_adb_frame.grid_remove()
 
-        ttk.Label(self.extras_adb_frame, text="Audiobooks path:").grid(row=0, column=0, sticky="w", padx=10, pady=10)
+        ttk.Label(self.extras_adb_frame, text="Audiobooks path:", width=LABEL_WIDTH, anchor="w").grid(
+            row=0, column=0, sticky="w", padx=10, pady=10)
         self.adb_audiobooks_path_var = tk.StringVar(value="/storage/emulated/0/Audiobooks/")
-        ttk.Entry(self.extras_adb_frame, textvariable=self.adb_audiobooks_path_var).grid(
+        ttk.Entry(self.extras_adb_frame, textvariable=self.adb_audiobooks_path_var, width=ENTRY_WIDTH).grid(
             row=0, column=1, sticky="ew", padx=5, pady=10)
+        self.sync_audiobooks_adb_btn = tk.Button(
+            self.extras_adb_frame, text="Sync", command=self._start_sync_audiobooks,
+            width=10, bg="green", fg="white", font=('', 9, 'bold'))
+        self.sync_audiobooks_adb_btn.grid(row=0, column=2, padx=5, pady=10)
 
-        ttk.Label(self.extras_adb_frame, text="Podcasts path:").grid(row=1, column=0, sticky="w", padx=10, pady=10)
+        ttk.Label(self.extras_adb_frame, text="Podcasts path:", width=LABEL_WIDTH, anchor="w").grid(
+            row=1, column=0, sticky="w", padx=10, pady=10)
         self.adb_podcasts_path_var = tk.StringVar(value="/storage/emulated/0/Podcasts/")
-        ttk.Entry(self.extras_adb_frame, textvariable=self.adb_podcasts_path_var).grid(
+        ttk.Entry(self.extras_adb_frame, textvariable=self.adb_podcasts_path_var, width=ENTRY_WIDTH).grid(
             row=1, column=1, sticky="ew", padx=5, pady=10)
-
-        ttk.Label(self.extras_adb_frame,
-                  text="(pick the device in the Playlists tab's Android Device panel)",
-                  foreground="gray").grid(row=2, column=0, columnspan=2, sticky="w", padx=10, pady=(0, 5))
+        self.sync_podcasts_adb_btn = tk.Button(
+            self.extras_adb_frame, text="Sync", command=self._start_sync_podcasts,
+            width=10, bg="green", fg="white", font=('', 9, 'bold'))
+        self.sync_podcasts_adb_btn.grid(row=1, column=2, padx=5, pady=10)
 
         # --- Options ---
         opts_frame = ttk.LabelFrame(parent, text="Options")
@@ -966,12 +1023,10 @@ class PowerAmpSyncApp:
                         variable=self.extras_mirror_var).grid(row=0, column=1, sticky="w", padx=10, pady=5)
 
         # --- Actions ---
+        # Sync buttons live per-row above now; this just holds the shared
+        # Cancel for whichever one is running.
         action_frame = ttk.Frame(parent)
         action_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=10)
-
-        self.extras_sync_btn = tk.Button(action_frame, text="Sync Now", command=self._start_sync_extras,
-                                          width=15, bg="green", fg="white", font=('', 9, 'bold'))
-        self.extras_sync_btn.pack(side=tk.LEFT, padx=(10, 5))
 
         self.extras_cancel_btn = tk.Button(action_frame, text="Cancel", command=self._cancel_sync,
                                             width=15, bg="red", fg="white", font=('', 9, 'bold'),
@@ -1069,8 +1124,6 @@ class PowerAmpSyncApp:
         self.bitrate_var.set(settings.opus_bitrate)
 
         # Load Audiobooks/Podcasts settings
-        self.sync_audiobooks_var.set(settings.sync_audiobooks)
-        self.sync_podcasts_var.set(settings.sync_podcasts)
         self.audiobooks_source_var.set(settings.audiobooks_source_path or "M:\\Audiobooks")
         self.podcasts_source_var.set(settings.podcasts_source_path or "M:\\Podcasts")
         self.audiobooks_dest_var.set(settings.audiobooks_dest_path)
@@ -1165,12 +1218,17 @@ class PowerAmpSyncApp:
         is_adb = self.sync_target_var.get() == "adb"
 
         if is_adb:
-            self.local_dest_frame.grid_remove()
-            self.adb_frame.grid()
+            self.universal_adb_frame.grid()
             # Auto-populate the device picker when the panel becomes visible
             # so the user sees what's attached without clicking Refresh first.
             if not self._device_entries:
                 self.root.after_idle(self._detect_adb_device)
+        else:
+            self.universal_adb_frame.grid_remove()
+
+        if is_adb:
+            self.local_dest_frame.grid_remove()
+            self.adb_frame.grid()
         else:
             self.adb_frame.grid_remove()
             self.local_dest_frame.grid()
@@ -1429,8 +1487,6 @@ TROUBLESHOOTING
             playlist_presets=self.config_manager.settings.playlist_presets,
             active_preset=self.preset_var.get(),
             # Audiobooks/Podcasts settings
-            sync_audiobooks=self.sync_audiobooks_var.get(),
-            sync_podcasts=self.sync_podcasts_var.get(),
             audiobooks_source_path=self.audiobooks_source_var.get(),
             podcasts_source_path=self.podcasts_source_var.get(),
             audiobooks_dest_path=self.audiobooks_dest_var.get(),
@@ -2732,20 +2788,18 @@ TROUBLESHOOTING
 
         threading.Thread(target=sync_thread, daemon=True).start()
 
-    def _start_sync_extras(self) -> None:
-        """Sync audiobooks and/or downloaded podcasts — plain file copy, no conversion."""
-        categories = []  # (label, source_dir, local_dest_var, adb_path_var)
-        if self.sync_audiobooks_var.get():
-            categories.append(("Audiobooks", self.audiobooks_source_var.get().strip(),
-                                self.audiobooks_dest_var, self.adb_audiobooks_path_var))
-        if self.sync_podcasts_var.get():
-            categories.append(("Podcasts", self.podcasts_source_var.get().strip(),
-                                self.podcasts_dest_var, self.adb_podcasts_path_var))
+    def _start_sync_audiobooks(self) -> None:
+        """Sync just Audiobooks — plain file copy, no conversion."""
+        self._start_sync_extras([("Audiobooks", self.audiobooks_source_var.get().strip(),
+                                   self.audiobooks_dest_var, self.adb_audiobooks_path_var)])
 
-        if not categories:
-            messagebox.showwarning("No Selection", "Select Audiobooks and/or Downloaded Podcasts to sync.")
-            return
+    def _start_sync_podcasts(self) -> None:
+        """Sync just Downloaded Podcasts — plain file copy, no conversion."""
+        self._start_sync_extras([("Podcasts", self.podcasts_source_var.get().strip(),
+                                   self.podcasts_dest_var, self.adb_podcasts_path_var)])
 
+    def _start_sync_extras(self, categories) -> None:
+        """Sync the given (label, source_dir, local_dest_var, adb_path_var) categories."""
         for label, source_dir, _local_var, _adb_var in categories:
             if not source_dir or not os.path.isdir(source_dir):
                 messagebox.showwarning("Invalid Source", f"{label} source folder does not exist:\n{source_dir}")
@@ -2893,7 +2947,10 @@ TROUBLESHOOTING
         """Enable/disable every Sync/Cancel button together (only one sync runs at a time)."""
         self.sync_btn.config(state=start_state)
         self.sync_playlists_btn.config(state=start_state)
-        self.extras_sync_btn.config(state=start_state)
+        self.sync_audiobooks_btn.config(state=start_state)
+        self.sync_podcasts_btn.config(state=start_state)
+        self.sync_audiobooks_adb_btn.config(state=start_state)
+        self.sync_podcasts_adb_btn.config(state=start_state)
         self.cancel_btn.config(state=cancel_state)
         self.extras_cancel_btn.config(state=cancel_state)
 
