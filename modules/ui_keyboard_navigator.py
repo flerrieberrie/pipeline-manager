@@ -45,6 +45,26 @@ class KeyboardNavigatorMixin:
         - self.header_hint_label: tk.Label
     """
 
+    _CATEGORY_GRID_COLS = 2
+
+    def _category_grid_rows(self):
+        """Row layout of the categories grid: pairs of indices, 2 per row,
+        except a trailing solo item (e.g. Sandbox) which gets its own
+        single-column row."""
+        order = self.CATEGORY_ORDER
+        cols = self._CATEGORY_GRID_COLS
+        return [
+            list(range(i, min(i + cols, len(order))))
+            for i in range(0, len(order), cols)
+        ]
+
+    def _category_row_col(self, rows):
+        """(row, col) of the currently focused category within `rows`."""
+        for r, indices in enumerate(rows):
+            if self.category_focus_index in indices:
+                return r, indices.index(self.category_focus_index)
+        return 0, 0
+
     def _should_handle_keyboard(self):
         """Check if keyboard shortcuts should be handled (not when typing in text fields)."""
         focused = self.root.focus_get()
@@ -138,9 +158,13 @@ class KeyboardNavigatorMixin:
         if not self._should_handle_keyboard():
             return
         if self.focused_panel == "categories":
-            # 2x3 grid: up moves by 2 (one row)
-            if self.category_focus_index >= 2:
-                self.category_focus_index -= 2
+            # Grid: up moves to the same column in the previous row (clamped
+            # for the ragged trailing Sandbox row).
+            rows = self._category_grid_rows()
+            row, col = self._category_row_col(rows)
+            if row > 0:
+                prev_row = rows[row - 1]
+                self.category_focus_index = prev_row[min(col, len(prev_row) - 1)]
                 self._select_focused_category()
         elif self.focused_panel == "operations":
             # 2x1 grid: no up movement (single row)
@@ -163,9 +187,13 @@ class KeyboardNavigatorMixin:
         if not self._should_handle_keyboard():
             return
         if self.focused_panel == "categories":
-            # 2x3 grid: down moves by 2 (one row)
-            if self.category_focus_index < len(self.CATEGORY_ORDER) - 2:
-                self.category_focus_index += 2
+            # Grid: down moves to the same column in the next row (clamped
+            # for the ragged trailing Sandbox row).
+            rows = self._category_grid_rows()
+            row, col = self._category_row_col(rows)
+            if row < len(rows) - 1:
+                next_row = rows[row + 1]
+                self.category_focus_index = next_row[min(col, len(next_row) - 1)]
                 self._select_focused_category()
         elif self.focused_panel == "operations":
             # 2x1 grid: no down movement (single row)
@@ -189,7 +217,7 @@ class KeyboardNavigatorMixin:
         if not self._should_handle_keyboard():
             return
         if self.focused_panel == "categories":
-            # 2x3 grid: left moves by 1
+            # Flat order: left moves by 1 (crosses rows, including Sandbox)
             if self.category_focus_index > 0:
                 self.category_focus_index -= 1
                 self._select_focused_category()
@@ -210,7 +238,7 @@ class KeyboardNavigatorMixin:
         if not self._should_handle_keyboard():
             return
         if self.focused_panel == "categories":
-            # 2x3 grid: right moves by 1
+            # Flat order: right moves by 1 (crosses rows, including Sandbox)
             if self.category_focus_index < len(self.CATEGORY_ORDER) - 1:
                 self.category_focus_index += 1
                 self._select_focused_category()

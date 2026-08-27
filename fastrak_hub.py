@@ -238,13 +238,13 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         self.focused_panel = "categories"  # "categories", "operations", "tools", "tracker"
         self.last_left_panel = "categories"  # Remember last left panel for A key from tracker
         self.panel_before_creation = "categories"  # Remember panel before project creation
-        self.category_focus_index = 0      # 0-5 for 2x3 grid
+        self.category_focus_index = 0      # 0-6: 2x3 grid + Sandbox banner row
         self.operations_focus_index = 0    # 0-1 for BUSINESS, GLOBAL
         self.tools_focus_index = 0         # Index in current tools+actions list
         self.tool_buttons = []             # References to tool buttons for navigation
 
         # Layout constants for keyboard navigation
-        self.CATEGORY_ORDER = ["VISUAL", "REALTIME", "AUDIO", "PHYSICAL", "PHOTO", "WEB"]
+        self.CATEGORY_ORDER = ["VISUAL", "REALTIME", "AUDIO", "PHYSICAL", "PHOTO", "WEB", "SANDBOX"]
         self.OPERATIONS_ORDER = ["BUSINESS", "GLOBAL"]
         self.SCOPE_ORDER = ["personal", "client"]
         self.STATUS_ORDER = ["active", "archived", "all"]
@@ -591,6 +591,17 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
             btn = self._create_category_button(self.cat_grid, category_key, category_data)
             btn.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
 
+        # Sandbox — wide banner button, bottom row of the categories grid
+        # (spans both columns). Lives here rather than under Operations
+        # since it behaves like a category for selection/WASD purposes:
+        # it's part of CATEGORY_ORDER and toggles via self.session.toggle_category
+        # like any other category button.
+        if "SANDBOX" in BUSINESS_CATEGORIES:
+            sandbox_data = BUSINESS_CATEGORIES["SANDBOX"]
+            sandbox_btn = self._create_sandbox_button(self.cat_grid, "SANDBOX", sandbox_data)
+            sandbox_row = (len(category_order) + 1) // 2
+            sandbox_btn.grid(row=sandbox_row, column=0, columnspan=2, padx=4, pady=4, sticky="nsew")
+
         # Configure grid columns to be equal
         self.cat_grid.columnconfigure(0, weight=1)
         self.cat_grid.columnconfigure(1, weight=1)
@@ -636,23 +647,6 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         # Configure grid columns to be equal
         self.ops_grid.columnconfigure(0, weight=1)
         self.ops_grid.columnconfigure(1, weight=1)
-
-        # Separator between Operations and Sandbox
-        sandbox_separator = tk.Frame(left_panel, bg=COLORS["border"], height=1)
-        sandbox_separator.pack(fill=tk.X, padx=15, pady=(10, 10))
-
-        # ═══════════════════════════════════════════════════════════
-        # SANDBOX SECTION — one big banner button (no header needed,
-        # the button itself says "Sandbox"). Half the height of a normal
-        # category button, full width of the two-column grid above it.
-        # ═══════════════════════════════════════════════════════════
-        self.sandbox_section = tk.Frame(left_panel, bg=COLORS["bg_card"])
-        self.sandbox_section.pack(fill=tk.X, padx=15, pady=(0, 10))
-
-        if "SANDBOX" in BUSINESS_CATEGORIES:
-            sandbox_data = BUSINESS_CATEGORIES["SANDBOX"]
-            sandbox_btn = self._create_sandbox_button(self.sandbox_section, "SANDBOX", sandbox_data)
-            sandbox_btn.pack(fill=tk.X)
 
         # ═══════════════════════════════════════════════════════════
         # SELECTED CATEGORY PANEL (below operations, as separate panel)
