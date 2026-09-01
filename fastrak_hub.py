@@ -1629,7 +1629,8 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
                 current_quarter = (now.month - 1) // 3 + 1
 
                 # Construct the quarterly folder path
-                folder_path = f"{library_path}\\Boekhouding\\{current_year}\\Q{current_quarter}"
+                boekhouding_base = get_rak_settings().get_boekhouding_base()
+                folder_path = f"{boekhouding_base}\\{current_year}\\Q{current_quarter}"
 
             if os.path.exists(folder_path):
                 os.startfile(folder_path)

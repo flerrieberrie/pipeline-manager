@@ -692,13 +692,40 @@ def _find_invoice_by_number_in_dir(dir_path: Path, invoice_number: str) -> Optio
     return None
 
 
+def _reroot_under_current_boekhouding_base(target: Path) -> Optional[Path]:
+    """Recover a shortcut target whose whole Boekhouding tree was relocated
+    (e.g. the archive nested one level deeper under a new "Facturen"
+    subfolder). The target's own trailing <year>/Q<n>/<Uitgaand|
+    Binnenkomend>/<file> suffix is usually still valid — just re-rooted
+    wherever resolve_boekhouding_base() points today. Read-only: never
+    touches the stale target itself. Returns the re-rooted file if it
+    actually exists there, else None.
+    """
+    parts = target.parts
+    if len(parts) < 4:
+        return None
+    tail = Path(*parts[-4:-1])  # <year>/Q<n>/<Uitgaand|Binnenkomend>
+    try:
+        from invoice_manager.core.config import load_config
+        current_base = load_config().resolve_boekhouding_base()
+    except Exception:
+        return None
+    candidate = current_base / tail / target.name
+    return candidate if candidate.exists() else None
+
+
 def _resolve_shortcut_target(lnk_path: Path) -> Optional[Path]:
     """Read a Windows .lnk shortcut's target path, or None if it can't be
     resolved (not on Windows, broken shortcut, missing pywin32, etc.).
 
-    If the recorded target no longer exists, falls back to searching its
+    If the recorded target no longer exists, first tries re-rooting it
+    under the current boekhouding_base (handles the whole archive tree
+    being relocated), then falls back to searching its own recorded
     parent directory for a PDF with the same invoice number embedded in
-    its name — handles archived invoices that were renamed after filing.
+    its name (handles a single archived invoice renamed in place).
+    Either way, a recovered target is written back into the shortcut so
+    it opens correctly next time too, and so this lookup only costs
+    once, ever — same self-healing approach as _recover_order_id.
     """
     try:
         import win32com.client
@@ -707,16 +734,24 @@ def _resolve_shortcut_target(lnk_path: Path) -> Optional[Path]:
         target = Path(shortcut.TargetPath) if shortcut.TargetPath else None
         if target and target.exists():
             return target
-        if target:
+        if not target:
+            return None
+
+        recovered = _reroot_under_current_boekhouding_base(target)
+        if recovered is None:
             m = _FACTUUR_NUMBER_RE.search(target.name)
             if m:
                 recovered = _find_invoice_by_number_in_dir(target.parent, m.group(1))
-                if recovered:
-                    logger.info(
-                        f"Shortcut target renamed since filing — recovered "
-                        f"{target.name} -> {recovered.name} in {target.parent}"
-                    )
-                    return recovered
+
+        if recovered:
+            logger.info(
+                f"Shortcut target moved/renamed since filing — repairing "
+                f"{lnk_path.name}: {target} -> {recovered}"
+            )
+            shortcut.TargetPath = str(recovered)
+            shortcut.WorkingDirectory = str(recovered.parent)
+            shortcut.save()
+            return recovered
         return None
     except Exception as e:
         logger.warning(f"Could not resolve shortcut target for {lnk_path}: {e}")

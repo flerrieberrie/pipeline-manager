@@ -876,7 +876,7 @@ class InvoiceFiler:
     Handles filing invoices to the bookkeeping folder and creating
     .lnk shortcuts in order/project folders.
 
-    Bookkeeping structure: {library}/Boekhouding/{year}/Q{quarter}/Uitgaand/
+    Bookkeeping structure: {boekhouding_base}/{year}/Q{quarter}/Uitgaand/
     Invoice naming: 3D_YYMMDD_Factuur{number}_{ClientName}.pdf
     """
 
@@ -884,7 +884,7 @@ class InvoiceFiler:
         self.config = config
         self.wc_client = wc_client
         settings = get_rak_settings()
-        self.library_base = Path(settings.get_active_base()) / "_LIBRARY" / "Boekhouding"
+        self.library_base = Path(settings.get_boekhouding_base())
 
     def _get_quarter_dir(self, date_str: str) -> Path:
         """Get the Uitgaand folder for the quarter containing the given date."""

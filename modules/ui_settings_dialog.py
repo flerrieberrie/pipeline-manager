@@ -853,6 +853,90 @@ class SettingsDialog:
             bg=COLORS["bg_card"]
         ).pack(anchor="w", padx=(15 * 10, 0), pady=(0, 5))
 
+        # === BUSINESS / INVOICING SECTION ===
+        business_section = tk.LabelFrame(
+            content_frame,
+            text=" Business / Invoicing ",
+            font=font.Font(family="Segoe UI", size=11, weight="bold"),
+            fg=COLORS["text_primary"],
+            bg=COLORS["bg_card"],
+            padx=15,
+            pady=10
+        )
+        business_section.pack(fill=tk.X, padx=20, pady=(0, 15))
+
+        # Boekhouding base row
+        boek_frame = tk.Frame(business_section, bg=COLORS["bg_card"])
+        boek_frame.pack(fill=tk.X, pady=5)
+
+        tk.Label(
+            boek_frame,
+            text="Boekhouding Path:",
+            font=font.Font(family="Segoe UI", size=10),
+            fg=COLORS["text_primary"],
+            bg=COLORS["bg_card"],
+            width=15,
+            anchor="w"
+        ).pack(side=tk.LEFT)
+
+        self.boekhouding_base_var = tk.StringVar(value=self.settings.get_boekhouding_base_explicit())
+        boek_entry = tk.Entry(
+            boek_frame,
+            textvariable=self.boekhouding_base_var,
+            font=font.Font(family="Segoe UI", size=10),
+            bg=COLORS["bg_secondary"],
+            fg=COLORS["text_primary"],
+            insertbackground=COLORS["text_primary"],
+            width=30
+        )
+        boek_entry.pack(side=tk.LEFT, padx=(0, 10))
+        boek_entry.bind('<KeyRelease>', lambda e: self._validate_paths())
+
+        tk.Button(
+            boek_frame,
+            text="Browse",
+            command=lambda: self._browse_to_var(self.boekhouding_base_var, "Select Boekhouding/Invoices Directory"),
+            bg=COLORS["bg_secondary"],
+            fg=COLORS["text_primary"],
+            font=font.Font(family="Segoe UI", size=9),
+            relief=tk.FLAT,
+            cursor="hand2",
+            padx=10
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        tk.Button(
+            boek_frame,
+            text="Use default",
+            command=self._clear_boekhouding_base,
+            bg=COLORS["bg_secondary"],
+            fg=COLORS["text_primary"],
+            font=font.Font(family="Segoe UI", size=9),
+            relief=tk.FLAT,
+            cursor="hand2",
+            padx=10
+        ).pack(side=tk.LEFT, padx=(0, 10))
+
+        self.boekhouding_status_label = tk.Label(
+            boek_frame,
+            text="",
+            font=font.Font(family="Segoe UI", size=9),
+            bg=COLORS["bg_card"],
+            anchor="w"
+        )
+        self.boekhouding_status_label.pack(side=tk.LEFT)
+
+        tk.Label(
+            business_section,
+            text=("Root folder where invoices are filed/linked from (Invoice Manager, "
+                  "WooCommerce order linking). Leave blank to use the default: "
+                  "<Active Base>\\_LIBRARY\\Boekhouding"),
+            font=font.Font(family="Segoe UI", size=9, slant="italic"),
+            fg=COLORS["text_secondary"],
+            bg=COLORS["bg_card"],
+            wraplength=600,
+            justify="left",
+        ).pack(anchor="w", padx=(15 * 10, 0), pady=(0, 5))
+
         # === CATEGORY PATHS SECTION ===
         paths_section = tk.LabelFrame(
             content_frame,
@@ -2433,6 +2517,19 @@ class SettingsDialog:
         else:
             self.launchers_status_label.config(text=f"! {launch_msg}", fg=COLORS["warning"])
 
+        # Validate boekhouding base (blank = derived default, always OK)
+        boek_explicit = self.boekhouding_base_var.get().strip()
+        if not boek_explicit:
+            self.boekhouding_status_label.config(
+                text=f"(default: {self.settings.get_boekhouding_base()})",
+                fg=COLORS["text_secondary"])
+        else:
+            boek_valid, boek_msg = self.settings.validate_drive(boek_explicit)
+            if boek_valid:
+                self.boekhouding_status_label.config(text=f"OK {boek_msg}", fg=COLORS["success"])
+            else:
+                self.boekhouding_status_label.config(text=f"! {boek_msg}", fg=COLORS["warning"])
+
         # Update category path labels
         self._update_category_paths()
 
@@ -2485,6 +2582,11 @@ class SettingsDialog:
             self.active_base_var.set(folder)
             self._validate_paths()
 
+    def _clear_boekhouding_base(self):
+        """Clear the Boekhouding override so it falls back to the derived default."""
+        self.boekhouding_base_var.set("")
+        self._validate_paths()
+
     def _browse_to_var(self, var, title):
         """Open folder browser and set the result to a StringVar."""
         current = var.get()
@@ -2516,6 +2618,7 @@ class SettingsDialog:
             self.archive_base_var.set(defaults["drives"]["archive_base"])
             self.mapped_sw_var.set(defaults["software_sync"]["mapped_software_path"])
             self.launchers_var.set(defaults["software_sync"]["launchers_base_path"])
+            self.boekhouding_base_var.set(defaults.get("business", {}).get("boekhouding_base", ""))
             self._validate_paths()
 
             # Reset software defaults in UI
@@ -2550,6 +2653,7 @@ class SettingsDialog:
         self.settings.set_archive_base(archive_base)
         self.settings.set_mapped_software_path(self.mapped_sw_var.get())
         self.settings.set_launchers_base_path(self.launchers_var.get())
+        self.settings.set_boekhouding_base(self.boekhouding_base_var.get().strip())
 
         # Save software defaults
         if hasattr(self, 'software_entries'):
