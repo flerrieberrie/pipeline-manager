@@ -1701,10 +1701,22 @@ class ProfessionalPipelineGUI(KeyboardNavigatorMixin):
         widget.bind("<Leave>", hide_hint)
 
     def open_settings(self):
-        """Open the settings dialog."""
+        """Open the settings dialog, or close it if it's already open.
+
+        The dialog no longer closes itself on Save (so you can keep
+        tweaking and saving without losing your place) — this toggle is
+        how a second press of the Settings button/shortcut closes it.
+        """
+        existing = getattr(self, '_settings_dialog', None)
+        if existing is not None and existing.dialog.winfo_exists():
+            existing._cancel()
+            return
+
         prev_on_bottom = self.settings.get_always_on_bottom()
-        dialog = SettingsDialog(self.root, self.settings)
-        if dialog.show():
+        dialog = self._settings_dialog = SettingsDialog(self.root, self.settings)
+        saved = dialog.show()
+        self._settings_dialog = None
+        if saved:
             self.update_status("Settings saved", "success")
             # Reload path config to reflect changes
             self.settings = get_rak_settings()

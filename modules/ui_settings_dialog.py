@@ -41,9 +41,11 @@ class SettingsDialog:
         self.dialog.minsize(700, 600)
         self.dialog.configure(bg=COLORS["bg_primary"])
 
-        # Make dialog modal
+        # Non-modal: Save keeps this window open (see _save()), and the
+        # caller's Settings button/shortcut toggles it closed on a second
+        # press — both need the main window to stay clickable, so no
+        # grab_set() here.
         self.dialog.transient(parent)
-        self.dialog.grab_set()
         # X-button on title bar = treat as Cancel (also persists geometry).
         self.dialog.protocol("WM_DELETE_WINDOW", self._cancel)
 
@@ -1548,6 +1550,107 @@ class SettingsDialog:
         var.trace_add("write", lambda *_a: render())
         return btn
 
+    def _startup_build_timing_controls(self, parent):
+        """Controls for the launcher's two desktop-switch delays plus
+        where it lands when done (StartupLauncher.ps1):
+          - line ~536 ``Start-Sleep -Milliseconds $T.BetweenDesktopsDelay``
+            — pause between each desktop while placing apps.
+          - line ~541 ``Start-Sleep -Milliseconds $T.FinalInitDelay`` then
+            ``Switch-Desktop`` to ``final_desktop`` — pause + which
+            desktop the launcher returns to once every app is placed
+            (used to be hardcoded to desktop 1).
+        All three bind the same way per-row app vars do (trace_add ->
+        write straight into self._startup_cfg) so the global Save button
+        picks them up with no extra sync step."""
+        timing = self._startup_cfg.setdefault("timing", {})
+
+        row1 = tk.Frame(parent, bg=COLORS["bg_card"])
+        row1.pack(fill=tk.X, anchor="w")
+
+        tk.Label(
+            row1, text="Delay between desktop switches:",
+            font=font.Font(family="Segoe UI", size=9),
+            fg=COLORS["text_secondary"], bg=COLORS["bg_card"],
+        ).pack(side=tk.LEFT)
+
+        self._startup_between_desktops_var = tk.IntVar(
+            value=int(timing.get("between_desktops_delay_ms", 1500))
+        )
+
+        def _on_between_change(*_a):
+            try:
+                self._startup_cfg["timing"]["between_desktops_delay_ms"] = \
+                    max(0, int(self._startup_between_desktops_var.get()))
+            except (ValueError, tk.TclError):
+                pass
+        self._startup_between_desktops_var.trace_add("write", _on_between_change)
+
+        ttk.Spinbox(
+            row1, from_=0, to=10000, increment=100, width=8,
+            textvariable=self._startup_between_desktops_var,
+        ).pack(side=tk.LEFT, padx=(6, 4))
+
+        tk.Label(
+            row1, text="ms  (pause after placing a desktop's apps, before switching to the next)",
+            font=font.Font(family="Segoe UI", size=8),
+            fg=COLORS["text_secondary"], bg=COLORS["bg_card"],
+        ).pack(side=tk.LEFT)
+
+        row2 = tk.Frame(parent, bg=COLORS["bg_card"])
+        row2.pack(fill=tk.X, anchor="w", pady=(4, 0))
+
+        tk.Label(
+            row2, text="Before returning to the landing desktop:",
+            font=font.Font(family="Segoe UI", size=9),
+            fg=COLORS["text_secondary"], bg=COLORS["bg_card"],
+        ).pack(side=tk.LEFT)
+
+        self._startup_final_delay_var = tk.IntVar(
+            value=int(timing.get("final_init_delay_ms", 15000))
+        )
+
+        def _on_final_delay_change(*_a):
+            try:
+                self._startup_cfg["timing"]["final_init_delay_ms"] = \
+                    max(0, int(self._startup_final_delay_var.get()))
+            except (ValueError, tk.TclError):
+                pass
+        self._startup_final_delay_var.trace_add("write", _on_final_delay_change)
+
+        ttk.Spinbox(
+            row2, from_=0, to=60000, increment=500, width=8,
+            textvariable=self._startup_final_delay_var,
+        ).pack(side=tk.LEFT, padx=(6, 4))
+
+        tk.Label(
+            row2, text="ms   Land on desktop:",
+            font=font.Font(family="Segoe UI", size=9),
+            fg=COLORS["text_secondary"], bg=COLORS["bg_card"],
+        ).pack(side=tk.LEFT, padx=(10, 0))
+
+        self._startup_final_desktop_var = tk.IntVar(
+            value=int(self._startup_cfg.get("final_desktop", 1))
+        )
+
+        def _on_final_desktop_change(*_a):
+            try:
+                self._startup_cfg["final_desktop"] = max(1, int(self._startup_final_desktop_var.get()))
+            except (ValueError, tk.TclError):
+                pass
+        self._startup_final_desktop_var.trace_add("write", _on_final_desktop_change)
+
+        ttk.Combobox(
+            row2, textvariable=self._startup_final_desktop_var,
+            values=list(self._STARTUP_DESKTOP_CHOICES),
+            state="readonly", width=4,
+        ).pack(side=tk.LEFT, padx=(4, 4))
+
+        tk.Label(
+            row2, text="(after every app is placed — was always desktop 1 before)",
+            font=font.Font(family="Segoe UI", size=8),
+            fg=COLORS["text_secondary"], bg=COLORS["bg_card"],
+        ).pack(side=tk.LEFT)
+
     def _build_startup_apps_tab(self, parent):
         try:
             import startup_apps_manager as sam  # noqa: WPS433
@@ -1597,6 +1700,16 @@ class SettingsDialog:
         )
         self._startup_deps_frame.pack(fill=tk.X, padx=20, pady=(6, 4))
         self._startup_render_deps()
+
+        # ----- Desktop transition timing -----
+        timing_frame = tk.LabelFrame(
+            parent, text=" Desktop Transition Timing ",
+            font=font.Font(family="Segoe UI", size=10, weight="bold"),
+            fg=COLORS["text_primary"], bg=COLORS["bg_card"],
+            padx=10, pady=6,
+        )
+        timing_frame.pack(fill=tk.X, padx=20, pady=(6, 4))
+        self._startup_build_timing_controls(timing_frame)
 
         # ----- Actions row -----
         actions = tk.Frame(parent, bg=COLORS["bg_primary"])
@@ -2456,7 +2569,7 @@ class SettingsDialog:
         cancel_btn.pack(side=tk.RIGHT, padx=(10, 0))
 
         # Save button (right side)
-        save_btn = tk.Button(
+        save_btn = self._save_btn = tk.Button(
             button_frame,
             text="Save",
             command=self._save,
@@ -2728,13 +2841,22 @@ class SettingsDialog:
 
         self._persist_geometry()
         self.result = True
-        self.dialog.destroy()
+        self._flash_saved()
         logger.info("Settings saved")
 
+    def _flash_saved(self):
+        """Save no longer closes the dialog (it stays open until the
+        caller's Settings toggle or Cancel/X closes it), so relabel the
+        button briefly as the only feedback that the click landed."""
+        btn = self._save_btn
+        btn.config(text="Saved", bg=COLORS["success"])
+        btn.after(900, lambda: btn.winfo_exists() and btn.config(text="Save", bg=COLORS["accent_dark"]))
+
     def _cancel(self):
-        """Cancel and close dialog."""
+        """Close the dialog without saving pending edits. Does not clear
+        self.result — an earlier Save this session should still be
+        reported to the caller even if this later close is a Cancel/X."""
         self._persist_geometry()
-        self.result = False
         self.dialog.destroy()
 
     def _persist_geometry(self):

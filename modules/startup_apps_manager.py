@@ -129,6 +129,10 @@ DEFAULT_CONFIG: dict = {
     # as a flat letter list for the PS1's simple poll loop.
     "wait_for_drives": [],
     "drive_wait_timeout_ms": 30000,
+    # Which virtual desktop the launcher switches back to after placing
+    # all apps (FinalInitDelay after the last one, then this). Used to be
+    # hardcoded to desktop 1.
+    "final_desktop": 1,
     "apps": [],
 }
 
