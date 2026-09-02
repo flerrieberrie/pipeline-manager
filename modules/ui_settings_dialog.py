@@ -1701,6 +1701,51 @@ class SettingsDialog:
         self._startup_deps_frame.pack(fill=tk.X, padx=20, pady=(6, 4))
         self._startup_render_deps()
 
+        # ----- Actions -----
+        # Boxless — sits between Dependencies and Desktop Transition
+        # Timing rather than in its own panel. Even gaps between buttons
+        # (padx=(0, 8), none trailing) since there's no frame padding to
+        # rely on here. Colors carry meaning: green/red for the task
+        # toggle mirror the per-app ON/OFF style below, blue marks the
+        # primary "try it" action, amber flags the one action that can
+        # overwrite the app list, and grey is reserved for the truly
+        # inert utility.
+        actions_frame = tk.Frame(parent, bg=COLORS["bg_primary"])
+        actions_frame.pack(fill=tk.X, padx=20, pady=(4, 4))
+
+        self._startup_task_btn = tk.Button(
+            actions_frame, text="...",
+            command=self._startup_toggle_task,
+            font=font.Font(family="Segoe UI", size=10),
+            relief=tk.FLAT, cursor="hand2", padx=15, pady=6,
+        )
+        self._startup_task_btn.pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Button(
+            actions_frame, text="Test now",
+            command=self._startup_test_now,
+            bg=COLORS["accent_dark"], fg="#ffffff",
+            font=font.Font(family="Segoe UI", size=10),
+            relief=tk.FLAT, cursor="hand2", padx=15, pady=6,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+
+        tk.Button(
+            actions_frame, text="Refresh paths",
+            command=self._startup_refresh_paths,
+            bg=COLORS["bg_secondary"], fg=COLORS["text_primary"],
+            font=font.Font(family="Segoe UI", size=10),
+            relief=tk.FLAT, cursor="hand2", padx=15, pady=6,
+        ).pack(side=tk.LEFT, padx=(0, 8))
+
+        self._startup_import_btn = tk.Button(
+            actions_frame, text="Import legacy Startup folder",
+            command=self._startup_import_legacy,
+            bg=COLORS["warning"], fg=COLORS["bg_primary"],
+            font=font.Font(family="Segoe UI", size=10),
+            relief=tk.FLAT, cursor="hand2", padx=15, pady=6,
+        )
+        self._startup_import_btn.pack(side=tk.LEFT)
+
         # ----- Desktop transition timing -----
         timing_frame = tk.LabelFrame(
             parent, text=" Desktop Transition Timing ",
@@ -1710,44 +1755,6 @@ class SettingsDialog:
         )
         timing_frame.pack(fill=tk.X, padx=20, pady=(6, 4))
         self._startup_build_timing_controls(timing_frame)
-
-        # ----- Actions row -----
-        actions = tk.Frame(parent, bg=COLORS["bg_primary"])
-        actions.pack(fill=tk.X, padx=20, pady=(4, 4))
-
-        self._startup_task_btn = tk.Button(
-            actions, text="...",
-            command=self._startup_toggle_task,
-            bg=COLORS["bg_secondary"], fg=COLORS["text_primary"],
-            font=font.Font(family="Segoe UI", size=10),
-            relief=tk.FLAT, cursor="hand2", padx=15, pady=6,
-        )
-        self._startup_task_btn.pack(side=tk.LEFT)
-
-        tk.Button(
-            actions, text="Test now",
-            command=self._startup_test_now,
-            bg=COLORS["bg_secondary"], fg=COLORS["text_primary"],
-            font=font.Font(family="Segoe UI", size=10),
-            relief=tk.FLAT, cursor="hand2", padx=15, pady=6,
-        ).pack(side=tk.LEFT, padx=(8, 0))
-
-        tk.Button(
-            actions, text="Refresh paths",
-            command=self._startup_refresh_paths,
-            bg=COLORS["bg_secondary"], fg=COLORS["text_primary"],
-            font=font.Font(family="Segoe UI", size=10),
-            relief=tk.FLAT, cursor="hand2", padx=15, pady=6,
-        ).pack(side=tk.LEFT, padx=(8, 0))
-
-        self._startup_import_btn = tk.Button(
-            actions, text="Import legacy Startup folder",
-            command=self._startup_import_legacy,
-            bg=COLORS["bg_secondary"], fg=COLORS["text_primary"],
-            font=font.Font(family="Segoe UI", size=10),
-            relief=tk.FLAT, cursor="hand2", padx=15, pady=6,
-        )
-        self._startup_import_btn.pack(side=tk.LEFT, padx=(8, 0))
 
         # ----- Monitor strip -----
         mon_frame = tk.Frame(parent, bg=COLORS["bg_primary"])
@@ -1984,7 +1991,7 @@ class SettingsDialog:
         hdr.pack(fill=tk.X, padx=2, pady=(0, 4))
         for text, width in [
             ("On", 3), ("Label", 22), ("Monitor", 8), ("Desktop", 8),
-            ("Position", 12), ("Order", 8),
+            ("Position", 12), ("Timeout", 9), ("Order", 8),
         ]:
             tk.Label(
                 hdr, text=text, width=width, anchor="w",
@@ -2006,6 +2013,7 @@ class SettingsDialog:
         monitor_var = tk.IntVar(value=int(app.get("monitor") or 1))
         desktop_var = tk.IntVar(value=int(app.get("virtual_desktop") or 1))
         position_var = tk.StringVar(value=str(app.get("position") or "maximize"))
+        timeout_var = tk.IntVar(value=int(app.get("window_timeout_ms") or 5000))
 
         # Wire each var so changes flow into the cfg immediately. Saves
         # pick up the latest cfg in _save() with no extra wiring.
@@ -2020,10 +2028,12 @@ class SettingsDialog:
         _bind(monitor_var, "monitor", int)
         _bind(desktop_var, "virtual_desktop", int)
         _bind(position_var, "position", str)
+        _bind(timeout_var, "window_timeout_ms", int)
 
         self._startup_row_vars.append({
             "enabled": enabled_var, "monitor": monitor_var,
             "desktop": desktop_var, "position": position_var,
+            "timeout": timeout_var,
         })
 
         self._startup_make_toggle(row, enabled_var).pack(side=tk.LEFT, padx=(2, 6))
@@ -2055,6 +2065,15 @@ class SettingsDialog:
         ttk.Combobox(
             row, textvariable=position_var, values=list(self._STARTUP_POSITIONS),
             state="readonly", width=10,
+        ).pack(side=tk.LEFT, padx=(4, 6))
+
+        # How long the launcher waits for this app's window before giving
+        # up on placing it — was a hardcoded 2500ms (browsers) / 5000ms
+        # (everything else) guess by path pattern; now per-app, 5000ms
+        # default for every app regardless of type.
+        ttk.Spinbox(
+            row, from_=500, to=30000, increment=500, width=7,
+            textvariable=timeout_var,
         ).pack(side=tk.LEFT, padx=(4, 6))
 
         # Order is implicit (list index within its desktop); show order
@@ -2210,9 +2229,14 @@ class SettingsDialog:
 
     def _startup_update_task_button(self):
         installed = self._sam.is_task_installed()
-        self._startup_task_btn.config(
-            text=("Uninstall scheduled task" if installed else "Install scheduled task")
-        )
+        # Green = safe/constructive (nothing installed yet); red = this
+        # click removes the logon automation — same color language as the
+        # per-app ON/OFF toggle.
+        if installed:
+            text, bg = "Uninstall scheduled task", COLORS["error"]
+        else:
+            text, bg = "Install scheduled task", COLORS["success"]
+        self._startup_task_btn.config(text=text, bg=bg, fg="#ffffff")
 
     def _startup_toggle_task(self):
         sam = self._sam
@@ -2801,16 +2825,6 @@ class SettingsDialog:
                         drive_mappings.append({"letter": norm, "target": target})
             self._startup_cfg["wait_for_drives"] = letters
             self._startup_cfg["drive_mappings"] = drive_mappings
-
-            # One-time auto-migration: the original final_init_delay_ms
-            # default was 5000ms, which doesn't give pythonw apps
-            # (FastRak) time to show their main window before the
-            # launcher Switch-Desktops back to 1 — so they end up on
-            # the wrong desktop. The old startup script used 13000ms;
-            # we use 15000ms. Bump any config still pinned to 5000.
-            timing = self._startup_cfg.setdefault("timing", {})
-            if timing.get("final_init_delay_ms") == 5000:
-                timing["final_init_delay_ms"] = 15000
 
         # Save startup apps sidecar (if the tab was built — guard so the
         # save doesn't fail when the module wasn't importable).

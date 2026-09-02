@@ -80,7 +80,6 @@ DEFAULT_CONFIG: dict = {
     "timing": {
         "app_init_delay_ms": 3000,
         "process_window_timeout_ms": 1500,
-        "browser_timeout_ms": 2500,
         "between_desktops_delay_ms": 1500,
         "move_to_desktop_delay_ms": 60,
         "move_to_monitor_delay_ms": 100,
@@ -89,9 +88,7 @@ DEFAULT_CONFIG: dict = {
         # 15s mirrors the legacy 1_StartupScript_AppsToDesktop.ps1 value.
         # 5s was too short: pythonw apps (FastRak) hadn't shown their
         # main window before the launcher switched back to desktop 1,
-        # which placed them on the wrong desktop. See _save() in
-        # ui_settings_dialog.py for the one-time migration that bumps
-        # legacy 5000-pinned configs.
+        # which placed them on the wrong desktop.
         "final_init_delay_ms": 15000,
     },
     # Process-name remap for apps launched via a stub launcher whose
@@ -150,6 +147,10 @@ APP_ENTRY_TEMPLATE: dict = {
     "y_offset": 0,
     "launch_order": 0,
     "enabled": True,
+    # How long the launcher waits for this app's window to appear before
+    # giving up on placing it (per-app since apps vary wildly — a browser
+    # shows a window almost instantly, pythonw + Tkinter can take longer).
+    "window_timeout_ms": 5000,
 }
 
 
